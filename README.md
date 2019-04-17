@@ -22,4 +22,4 @@ What should be included in the report?
 
 First presentations will be held 4/22/2019. We will add grades to groups to present earlier. Each group will present no more than 15 minutes on the presentation day. You don't have to complete the report before your presentation.
 
-20% will be based on the presentation and the rest will be based on the final report. The final report will be due on the 5/8/2919.
+20% will be based on the presentation and the rest will be based on the final report. The final report will be due on the 5/8/2019.
