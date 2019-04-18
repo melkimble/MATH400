@@ -1,5 +1,5 @@
 4/22
-- Adam Green
+- Adam Green, Taidgh Robinson, Connor Langlois
 - Madeline (with Zoey as Partner)
 - Ben Waterman
 
