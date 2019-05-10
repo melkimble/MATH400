@@ -1,0 +1,84 @@
+---
+title: "MATH400Project"
+author: "Melissa Kimble"
+date: "April 28, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+####
+## This reads LOBO data from the Damariscotta, Saco, and Bagaduce
+##
+## CREATED BY: Kate Beard
+## MODIFIED BY: Melissa Kimble
+## LAST MODIFIED: 04/28/2019
+###
+
+LibraryList<-c("ggplot2")
+for (TheLibrary in LibraryList)
+{
+  if(TheLibrary %in% rownames(installed.packages()) == FALSE) install.packages(TheLibrary)
+}
+library(ggplot2)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{setup}
+###################################################################################
+## setup
+###################################################################################
+#OutputDataFolderPathPNG<-"02_Working/SST_DMR_LSAT8/Figures/"
+#InputDataFolderPath<-"01_Original/CoastalSatLab/SST/"
+## grab the GCS prj from WQpolyjoin
+#TheGCSprj<-projection(readOGR("01_Original/FromKate/Damariscotta/WQpolyjoin.shp"))
+## grab the prj of the raster
+#UTMRaster<-raster("02_Working/CoastalSatLab/LC80110302013195LGN00_SST_WQMask.tif")
+#TheUTMprj<-projection(UTMRaster)
+
+
+FileNameDate<-as.character(format(Sys.Date(), "%Y%m%d"))
+TodayDate<-as.character(format(Sys.Date(), "%m-%d-%Y"))
+
+InputDataFolderPath<-"02_Working/Aquaculture/State_DMR/From_Flora/"
+OutputCSVFolderPath<-"02_Working/Aquaculture/State_DMR/From_Flora/"
+OutputDataFolderPathPNG<-paste("04_Figures/Aquaculture/State_DMR/From_Geoff/",FileNameDate,"/",sep="")
+
+TheDirs=c(OutputDataFolderPathPNG)
+
+## checks if the the directories exist, if they don't it creates them.
+for (TheDir in TheDirs){
+  DirectoryExists<-dir.exists(file.path(TheDir))
+  if (DirectoryExists==FALSE) dir.create(file.path(TheDir), recursive = TRUE)
+}
+
+DMRDataWQ<-read.csv("02_Working/WaterQuality/State_DMR/WQData_Update.csv")
+DMRDataWL<-read.csv("02_Working/WaterQuality/State_DMR/WLData_Update.csv")
+DMRDataWQ$Zone<-"WQ"
+DMRDataWL$Zone<-"WL"
+DMRData<-rbind(DMRDataWQ,DMRDataWL)
+
+###################################################################################
+DMRData$YrMo2<-format(as.Date(DMRData$Date, "%Y-%m-%d"),"%Y-%m")
+DMRData$Month<-format(as.Date(DMRData$Date, "%Y-%m-%d"),"%b")
+DMRData$Year<-format(as.Date(DMRData$Date, "%Y-%m-%d"),"%Y")
+
+Months<-c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")
+DMRData$Month<-factor(DMRData$Month, levels = Months)
+
+DMRData_YrMoSub<-DMRData[(DMRData$YrMo2>="2014-05" & DMRData$YrMo2<="2014-11"),]
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
