@@ -2,7 +2,7 @@
 # Class of functions for working with DMR data
 # Created by: mkimble
 # Date Created: 10/23/2017
-# LAST MODIFIED: 10/23/2017
+# LAST MODIFIED: 04/20/2019
 #TheSourceDir<-dirname(rstudioapi::getActiveDocumentContext()$path)
 #source(paste(TheSourceDir,"/DMRData_Functions.R",sep=""))
 #######################################################################################################################

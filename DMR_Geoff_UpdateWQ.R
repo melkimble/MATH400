@@ -5,13 +5,6 @@
 ## Damariscotta (WQTimeseries.dbf). It also drops columns that are
 ## not necessary. 
 ##
-## I only wanted Salinity, Temp, and Fecal Coliform. 
-## Dataset also has several other variables, so may want to tweak in the future
-## to include stuff like currents. 
-##
-## This data only goes as far back as 2014. I emailed Geoff and asked for an updated
-## dataset for WQ that includes all data (going back to 1990).
-##
 ## CREATED BY: Melissa Kimble
 ## LAST MODIFIED: 04/28/2019
 ###
@@ -35,7 +28,17 @@ source(paste(TheSourceDir,"/DMRData_Functions.R",sep=""))
 
 setwd("D:/Dropbox/00_Dissertation/01_Data/")
 
-WQData=read.dbf("01_Original/Aquaculture/FromKate/Damariscotta/WQTimeseries.dbf")
+Zone<-"WQ"
+
+
+## Locations for Water Quality Zone WQ (Damariscotta) from Geoff
+WQData_Loc<-read.csv("01_Original/WaterQuality/State_DMR/ShellfishMonitoring/From_Geoff/GA_WQ_Locs.csv")
+# Remove NA Lats and Longs
+WQData_Loc<-WQData_Loc[complete.cases(WQData_Loc[ , c("LATITUDE_DECIMAL","LONGITUDE_DECIMAL")]),]
+# drop columns with only NA values
+WQData_Loc<-WQData_Loc[,colSums(is.na(WQData_Loc))<nrow(WQData_Loc)]
+
+WQData=read.dbf("01_Original/Aquaculture/FromKate/Damariscotta/CSVs/WQTimeseries.dbf")
 #sum(is.na(WQData$INITIATED1[(WQData$LOCATION_I=="WQ039.00")]))
 #sum(is.na(WQData$INITIATED1))
 
@@ -50,40 +53,60 @@ sum(is.na(WQData$TRIP_START))
 
 #names(WQData)
 #head(WQData)
+
+names(WQData)
+
 colnames(WQData)[colnames(WQData)=="LOCATION_I"] <- "Station";colnames(WQData)[colnames(WQData)=="TRIP_START"] <- "Date"
-colnames(WQData)[colnames(WQData)=="TEMP_C"] <- "Temp";colnames(WQData)[colnames(WQData)=="LATITUDE_D"] <- "LATITUDE_DECIMAL"
-colnames(WQData)[colnames(WQData)=="LONGITUDE_"] <- "LONGITUDE_DECIMAL";colnames(WQData)[colnames(WQData)=="COL_SCORE"] <- "Score"
+colnames(WQData)[colnames(WQData)=="TEMP_C"] <- "TempC";colnames(WQData)[colnames(WQData)=="COL_SCORE"] <- "Score"
 colnames(WQData)[colnames(WQData)=="RAW_COL_SC"] <- "RawColScore";colnames(WQData)[colnames(WQData)=="SALINITY_P"] <- "Sal"
-WQData<-WQData[,c("Station","Date","Temp","LATITUDE_DECIMAL","LONGITUDE_DECIMAL","Score","RawColScore","Sal")]
+colnames(WQData)[colnames(WQData)=="TIDE_STAGE"] <- "Tide"
+
+WQData<-WQData[,c("Station","Date","Tide","TempC","Sal","Score","RawColScore")]
+WQData$Rain24Hrs<-NA
+WQData$Rain72Hrs<-NA
+WQData$RainSta<-NA
+
 #sum(is.na(WQData$Date[(WQData$Station=="WQ039.00")]))
 
 WQData$YrMo<-format(as.Date(WQData$Date, "%Y-%m-%d"),"%Y-%m")
 WQData$Date<-format(as.Date(WQData$Date, "%Y-%m-%d"),"%d-%b-%y")
 #sum(is.na(WQData$Date[(WQData$Station=="WQ039.00")]))
-WQData<-WQData[WQData$YrMo<"2014-01",]
 
-WQData_New<-read.csv("01_Original/WaterQuality/State_DMR/ShellfishMonitoring/GA_WQ_Data.csv")
-WQData_Loc<-read.csv("01_Original/WaterQuality/State_DMR/ShellfishMonitoring/GA_WQ_Locs.csv")
+## new DMR WQ data from Geoff
+WQData_New<-read.csv("01_Original/WaterQuality/State_DMR/ShellfishMonitoring/From_Geoff/GA_WQ_Data.csv")
+colnames(WQData_New)[colnames(WQData_New)=="Temp"] <- "TempC"
+WQData_New<-WQData_New[,c("Station","Date","Tide","TempC","Sal","Score","RawColScore","Rain24Hrs","Rain72Hrs","RainSta")]
 
-WQData_NewMer<-merge(WQData_New,WQData_Loc, by.x="Station", by.y="LOCATION_ID",all=FALSE)
-#names(WQData_NewMer)
-#head(WQData_NewMer)
-WQData_NewMer<-WQData_NewMer[,c("Station","Date","Temp","LATITUDE_DECIMAL","LONGITUDE_DECIMAL","Score","RawColScore","Sal")]
-WQData_NewMer$YrMo<-format(as.Date(WQData_NewMer$Date, "%d-%b-%y"),"%Y-%m")
-#sum(is.na(WQData_NewMer$Date[(WQData_NewMer$Station=="WQ039.00")]))
-sum(is.na(WQData_NewMer$Date))
-WQData_NewMer<-WQData_NewMer[WQData_NewMer$YrMo>="2014-01",]
+## grab minimum date from new dataset so that the data doesn't overlap when they are merged
+WQData_New$YrMo<-format(as.Date(WQData_New$Date, "%d-%b-%y"),"%Y-%m")
+MinNewDate<-min(WQData_New$YrMo)
+WQData<-WQData[WQData$YrMo<MinNewDate,]
+
+
+## Merge WQData and New data with Locations; drop non-matching stations
+WQData<-merge(WQData,WQData_Loc, by.x="Station", by.y="LOCATION_ID",all=FALSE)
+WQData_New<-merge(WQData_New,WQData_Loc, by.x="Station", by.y="LOCATION_ID",all=FALSE)
 
 #merge by row
-WQData_Update <- rbind(WQData,WQData_NewMer)
+WQData_Update <- rbind(WQData,WQData_New)
+
+
+# Remove NA TempC and Sal values
+## sometimes they put in TempC NA's as 99.9 :|
+Num99TempC<-nrow(WQData_Update[WQData_Update$TempC>=99,])
+print(paste("Number of TempC values == 99.9 removed: ", Num99TempC,sep=""))
+WQData_Update<-WQData_Update[!WQData_Update$TempC>=99,]
+## sometimes they put in TempC NA's as 99.9 OR 99 :|
+Num99Sal<-nrow(WQData_Update[WQData_Update$Sal>=99,])
+print(paste("Number of Sal values == 99.9 removed: ", Num99Sal,sep=""))
+WQData_Update<-WQData_Update[!WQData_Update$Sal>=99,]
+
+
 ## if they're not, then just drop lat/lon from the dataset that are 0
 NumZeroCoords<-nrow(WQData_Update[(WQData_Update$LATITUDE_DECIMAL==0 & WQData_Update$LONGITUDE_DECIMAL==0),])
 print(paste("Number of rows removed with (0,0) as (lat,long): ",NumZeroCoords,sep=""))
 WQData_Update<-WQData_Update[!(WQData_Update$LATITUDE_DECIMAL==0 & WQData_Update$LONGITUDE_DECIMAL==0),]
-## sometimes they put in temp NA's as 99.9 :|
-Num99Temp<-nrow(WQData_Update[WQData_Update$Temp==99.9,])
-print(paste("Number of Temp values == 99.9 removed: ", Num99Temp,sep=""))
-WQData_Update<-WQData_Update[!WQData_Update$Temp==99.9,]
+
 WQData_Update<-WQData_Update[!is.na(WQData_Update$Station),]
 WQData_Update$Date<-format(as.Date(WQData_Update$Date, "%d-%b-%y"), "%Y-%m-%d")
 WQData_Update<-RemoveDuplicates(WQData_Update)
@@ -92,5 +115,6 @@ rownames(WQData_Update) <- seq(length=nrow(WQData_Update))
 
 #update IDs
 WQData_Update$ID <- 1:nrow(WQData_Update)
-
-write.csv(WQData_Update,"02_Working/WaterQuality/State_DMR/WQData_Update.csv",row.names=FALSE)
+WQData_Update<-WQData_Update[,c("ID","Station","LATITUDE_DECIMAL","LONGITUDE_DECIMAL","Date","YrMo","Tide","TempC","Sal","Score","RawColScore","Rain24Hrs","Rain72Hrs","RainSta")]
+WQData_Update$Zone<-Zone
+write.csv(WQData_Update,"02_Working/WaterQuality/State_DMR/From_Geoff/WQData_Update.csv",row.names=FALSE)

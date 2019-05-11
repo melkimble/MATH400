@@ -1,54 +1,31 @@
 ---
-title: "MATH400Project"
+title: "MATH400FinalProject"
 author: "Melissa Kimble"
 date: "April 28, 2019"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-####
-## This reads LOBO data from the Damariscotta, Saco, and Bagaduce
-##
-## CREATED BY: Kate Beard
-## MODIFIED BY: Melissa Kimble
-## LAST MODIFIED: 04/28/2019
-###
+```{r setup}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
 
-LibraryList<-c("ggplot2")
+LibraryList<-c("ggplot2","mgcv","tidyverse","leaps")
 for (TheLibrary in LibraryList)
 {
   if(TheLibrary %in% rownames(installed.packages()) == FALSE) install.packages(TheLibrary)
 }
 library(ggplot2)
-```
-
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{setup}
-###################################################################################
-## setup
-###################################################################################
-#OutputDataFolderPathPNG<-"02_Working/SST_DMR_LSAT8/Figures/"
-#InputDataFolderPath<-"01_Original/CoastalSatLab/SST/"
-## grab the GCS prj from WQpolyjoin
-#TheGCSprj<-projection(readOGR("01_Original/FromKate/Damariscotta/WQpolyjoin.shp"))
-## grab the prj of the raster
-#UTMRaster<-raster("02_Working/CoastalSatLab/LC80110302013195LGN00_SST_WQMask.tif")
-#TheUTMprj<-projection(UTMRaster)
-
+library(mgcv)
+library(tidyverse)
+library(leaps)
 
 FileNameDate<-as.character(format(Sys.Date(), "%Y%m%d"))
 TodayDate<-as.character(format(Sys.Date(), "%m-%d-%Y"))
 
-InputDataFolderPath<-"02_Working/Aquaculture/State_DMR/From_Flora/"
-OutputCSVFolderPath<-"02_Working/Aquaculture/State_DMR/From_Flora/"
-OutputDataFolderPathPNG<-paste("04_Figures/Aquaculture/State_DMR/From_Geoff/",FileNameDate,"/",sep="")
+InputDataFolderPath<-"D:/Dropbox/00_Dissertation/01_Data/02_Working/WaterQuality/"
+OutputCSVFolderPath<-"D:/Dropbox/00_Dissertation/01_Data/02_Working/WaterQuality"
+OutputDataFolderPathPNG<-paste("D:/Dropbox/00_Dissertation/01_Data/04_Figures/Aquaculture/State_DMR/From_Geoff/",FileNameDate,"/",sep="")
 
-TheDirs=c(OutputDataFolderPathPNG)
+TheDirs=c(OutputCSVFolderPath,OutputDataFolderPathPNG)
 
 ## checks if the the directories exist, if they don't it creates them.
 for (TheDir in TheDirs){
@@ -56,29 +33,247 @@ for (TheDir in TheDirs){
   if (DirectoryExists==FALSE) dir.create(file.path(TheDir), recursive = TRUE)
 }
 
-DMRDataWQ<-read.csv("02_Working/WaterQuality/State_DMR/WQData_Update.csv")
-DMRDataWL<-read.csv("02_Working/WaterQuality/State_DMR/WLData_Update.csv")
-DMRDataWQ$Zone<-"WQ"
-DMRDataWL$Zone<-"WL"
-DMRData<-rbind(DMRDataWQ,DMRDataWL)
+## WQ and WL were cleaned and updated (appended new dates) in a separate R script
+all_DBFMerge<-read.csv(paste(InputDataFolderPath,"all_DMRBuoyRast_UTM.csv",sep=""))
+colnames(all_DBFMerge)[colnames(all_DBFMerge)=="LATITUDE_D"] <- "LATITUDE_DECIMAL"
+colnames(all_DBFMerge)[colnames(all_DBFMerge)=="LONGITUDE_"] <- "LONGITUDE_DECIMAL"
+all_DBFMerge<-all_DBFMerge[,c("Id","Station","LATITUDE_DECIMAL","LONGITUDE_DECIMAL","Date","YrMo","Easting","Northing","TempC","Sal",
+                              "WGOM_m","Type","DMRBuoyID","SMAFishId","SatTempC","StreamDist","Zone","Depth_m")]
+all_DBFMerge$DateTime<-as.POSIXlt(all_DBFMerge$Date, tz="GMT", format="%m/%d/%Y %H:%M:%S")
+all_DBFMerge$Date2<- strftime(all_DBFMerge$DateTime,"%Y-%m-%d")
+all_DBFMerge$Date<-all_DBFMerge$Date2
+ColDrop <- c("Date2","DateTime")
+all_DBFMerge<-all_DBFMerge[ , !(names(all_DBFMerge) %in% ColDrop)]
 
-###################################################################################
-DMRData$YrMo2<-format(as.Date(DMRData$Date, "%Y-%m-%d"),"%Y-%m")
-DMRData$Month<-format(as.Date(DMRData$Date, "%Y-%m-%d"),"%b")
-DMRData$Year<-format(as.Date(DMRData$Date, "%Y-%m-%d"),"%Y")
+all_DBFMerge$Month<-format(as.Date(all_DBFMerge$Date, "%Y-%m-%d"),"%b")
+all_DBFMerge$Year<-format(as.Date(all_DBFMerge$Date, "%Y-%m-%d"),"%Y")
 
 Months<-c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")
-DMRData$Month<-factor(DMRData$Month, levels = Months)
+all_DBFMerge$Month<-factor(all_DBFMerge$Month, levels = Months)
 
-DMRData_YrMoSub<-DMRData[(DMRData$YrMo2>="2014-05" & DMRData$YrMo2<="2014-11"),]
+all_DBFMerge_YrMoSub<-all_DBFMerge
+#all_DBFMerge_YrMoSub<-all_DBFMerge[(all_DBFMerge$YrMo2>="2014-05" & all_DBFMerge$YrMo2<="2014-11"),]
+
+all_DBFMerge_YrMoSub<-all_DBFMerge_YrMoSub[order(all_DBFMerge_YrMoSub$Date),]
+rownames(all_DBFMerge_YrMoSub) <- seq(length=nrow(all_DBFMerge_YrMoSub))
+head(all_DBFMerge_YrMoSub)
+
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
+## Exploratory Data Analysis
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+Water Quality Zones WQ and WL cover different regions, so the below plots were to check if the distributions of Salinity and Temperature were notably different. Zone will be included as a separate variable, because salinity in water quality zone WL has short tails while WQ has a left skew. Temperature for both regions were not notably different.
+There is high correlation between satellite temperature and buoy locations, which is to be expected because the buoy locations are closer to the center of the estuary, less susceptible to fresh water or land-based inputs.
+
+```{r}
+range(all_DBFMerge$Year[all_DBFMerge$Zone=="WQ"]);range(all_DBFMerge$Year[all_DBFMerge$Zone=="WL"])
+range(all_DBFMerge$TempC[all_DBFMerge$Zone=="WQ"]);range(all_DBFMerge$TempC[all_DBFMerge$Zone=="WL"])
+range(all_DBFMerge$Sal[all_DBFMerge$Zone=="WQ"]);range(all_DBFMerge$Sal[all_DBFMerge$Zone=="WL"])
+
+corrTest<-na.omit(all_DBFMerge)
+cor(as.numeric(corrTest$TempC),as.numeric(corrTest$SatTempC))
+
+par(mfrow =c(1,2))
+# by Zone - WQ or WL
+ggplot(all_DBFMerge_YrMoSub,aes(x=as.numeric(Sal))) + 
+  ylab("Density") +
+  xlab("Salinity (PPT)") +
+  geom_histogram(aes(y=..density..), colour="black", fill="white")+
+  geom_density(alpha=.2, fill="#FF6666") +
+  facet_grid(Zone ~ .) 
+# by Type - Sample or Buoy location
+ggplot(all_DBFMerge_YrMoSub,aes(x=as.numeric(Sal))) + 
+  ylab("Density") +
+  xlab("Salinity (PPT)") +
+  geom_histogram(aes(y=..density..), colour="black", fill="white")+
+  geom_density(alpha=.2, fill="#FF6666") +
+  facet_grid(Type ~ .) 
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+par(mfrow =c(1,2))
+
+# by Zone - WQ or WL
+ggplot(all_DBFMerge_YrMoSub,aes(x=as.numeric(TempC))) + 
+  ylab("Density") +
+  xlab("Temperature (C)") +
+  geom_histogram(aes(y=..density..), colour="black", fill="white")+
+  geom_density(alpha=.2, fill="#FF6666") +
+  facet_grid(Zone ~ .)
+# by Type - Sample or Buoy location
+ggplot(all_DBFMerge_YrMoSub,aes(x=as.numeric(TempC))) + 
+  ylab("Density") +
+  xlab("Temperature (C)") +
+  geom_histogram(aes(y=..density..), colour="black", fill="white")+
+  geom_density(alpha=.2, fill="#FF6666") +
+  facet_grid(Type ~ .)
+```
+
+```{r}
+par(mfrow =c(1,2))
+
+# temperature boxplots by zone
+ggplot(all_DBFMerge_YrMoSub, aes(x=Zone, y=as.numeric(TempC), fill=Zone)) + 
+  geom_boxplot() +
+  ylab("Temperature (C)") +
+  xlab("Zone") +
+  facet_grid(Type ~ .)
+
+# salinity boxplots by zone
+ggplot(all_DBFMerge_YrMoSub, aes(x=Zone, y=as.numeric(Sal), fill=Zone)) + 
+  geom_boxplot() +
+  ylab("Salinity (PPT)") +
+  xlab("Zone") +
+  facet_grid(Type ~ .)
+```
+
+WL and WQ do not not have extreme differences in the relationship between Salinity ~ Temperature. Season, however, will need to be treated separately as a variable (by month) within the shellfish water quality monitoring dataset.
+
+
+```{r}
+par(mfrow =c(2,2))
+# salinity ~ temperature by type & zone
+ggplot(data = all_DBFMerge_YrMoSub, aes(x = as.numeric(TempC), y = as.numeric(Sal), fill=Zone, colour=Zone)) +  
+  geom_point() + 
+  geom_smooth() + 
+  xlab("Temperature (C)") + 
+  scale_x_continuous(breaks=seq(0,35,5)) +
+  scale_y_continuous(limits=c(0,35),breaks=seq(0,35,5)) +
+  ylab("Salinity (PPT)") +
+  ggtitle("Salinity ~ Temperature") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  facet_grid(Type ~ .)
+
+# salinity ~ temperature by zone & month
+ggplot(data = all_DBFMerge_YrMoSub, aes(x = as.numeric(TempC), y = as.numeric(Sal), fill=Month, colour=Month)) +  
+  geom_point() + 
+  geom_smooth() + 
+  xlab("Temperature (C)") + 
+  scale_x_continuous(breaks=seq(0,35,5)) +
+  scale_y_continuous(limits=c(0,35),breaks=seq(0,35,5)) +
+  ylab("Salinity (PPT)") +
+  ggtitle("Salinity ~ Temperature") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  facet_grid(Type ~ .)
+
+```
+
+
+
+```{r}
+set.seed(1)
+all_DBFMerge_modsub<-all_DBFMerge[,c("Month","Easting","Northing","TempC","Sal","WGOM_m","Type","StreamDist","Zone","Depth_m")]
+rp <- modelr::resample_partition(all_DBFMerge_modsub, c(train = 0.7, test = 0.3))
+training_set <- as_tibble(rp$train)
+testing_set <- as_tibble(rp$test)
+
+regfit_fwd=regsubsets(Sal~.,data=training_set, nvmax=20, method="forward")
+regfit_summ<-summary(regfit_fwd)
+
+MinRSS<-which.min(regfit_summ$rss)
+MinRSS
+coef(regfit_fwd,MinRSS) 
+
+MaxAdjr2<-which.max(regfit_summ$adjr2)
+MaxAdjr2
+coef(regfit_fwd,MaxAdjr2)
+
+MinCP<-which.min(regfit_summ$cp)
+MinCP
+coef(regfit_fwd,MinCP) 
+
+MinBIC<-which.min(regfit_summ$bic)
+MinBIC
+coef(regfit_fwd,MinBIC) 
+
+par(mfrow =c(2,2))
+plot(regfit_summ$rss, xlab="Number of Variables", ylab="RSS", type="l")
+points(MinRSS, regfit_summ$rss[MinRSS], col =" red",cex =2, pch =20)
+plot(regfit_summ$adjr2, xlab="Number of Variables", ylab="Adjusted RSq",type="l")
+points(MaxAdjr2, regfit_summ$adjr2[MaxAdjr2], col ="red", cex=2, pch =20)
+plot(regfit_summ$cp ,xlab ="Number of Variables",ylab="Cp",type="l")
+points(MinCP, regfit_summ$cp[MinCP], col="red",cex=2, pch =20)
+plot(regfit_summ$bic, xlab="Number of Variables", ylab="BIC", type="l")
+points(MinBIC, regfit_summ$bic[MinBIC], col =" red",cex =2, pch =20)
+
+## Based on the evaluation plots, model performance stops making gains at 10 coefficients.
+coef(regfit_fwd,10) # MonthMar, MonthApr, MonthMay, MonthJun, Easting, Northing, TempC, TypeSample, StreamDist, ZoneWQ 
+training_set<-training_set[,c("Month","Easting","Northing","TempC","Sal","Type","StreamDist","Zone")]
+testing_set<-testing_set[,c("Month","Easting","Northing","TempC","Sal","Type","StreamDist","Zone")]
+
+```
+
+It was anticipated that R-sq.(adj) =  0.349   Deviance explained = 35.1%
+
+```{r}
+## Base model, no splines.
+fit_gam <- mgcv::gam(Sal ~ Month+Easting+Northing+TempC+Type+StreamDist+Zone, data = training_set)
+par(mfrow =c(3,3))
+mgcv::plot.gam(fit_gam, all.terms=TRUE, se=TRUE)
+
+## TempC 
+fit_gam1 <- mgcv::gam(Sal ~ Month+Easting+Northing+s(TempC,k=-1,bs="cs")+Type+StreamDist+Zone, data = training_set)
+anova(fit_gam,fit_gam1,test="F")
+## spline significant on TempC
+
+## StreamDist 
+fit_gam2<- mgcv::gam(Sal ~ Month+Easting+Northing+s(TempC,k=-1,bs="cs")+Type+s(StreamDist,k=-1,bs="cs")+Zone, data = training_set)
+anova(fit_gam1,fit_gam2,test="F")
+## spline significant on StreamDist
+
+## Easting 
+fit_gam3<- mgcv::gam(Sal ~ Month+s(Easting,k=-1,bs="cs")+Northing+s(TempC,k=-1,bs="cs")+Type+s(StreamDist,k=-1,bs="cs")+Zone, data = training_set)
+anova(fit_gam2,fit_gam3,test="F")
+## spline significant on Easting
+
+## Northing 
+fit_gam4<- mgcv::gam(Sal ~ Month+s(Easting,k=-1,bs="cs")+s(Northing,k=-1,bs="cs")+s(TempC,k=-1,bs="cs")+Type+s(StreamDist,k=-1,bs="cs")+Zone, data = training_set)
+anova(fit_gam3,fit_gam4,test="F")
+## spline significant on Northing
+
+```
+```{r}
+## Final model
+par(mfrow =c(3,3))
+mgcv::plot.gam(fit_gam4, all.terms=TRUE, se=TRUE)
+
+summary(fit_gam4)
+
+par(mfrow = c(2,2))
+gam.check(fit_gam4)
+
+```
+
+```{r}
+test_sub <- testing_set %>% select(Month, Easting, Northing, TempC, Sal, Type, StreamDist, Zone)
+# Report the test error obtained
+# https://drsimonj.svbtle.com/visualising-residuals
+test_sub$predicted<-predict(fit_gam4, testing_set)
+test_sub$residuals<-test_sub$predicted-testing_set$Sal
+hist(test_sub$residuals)
+
+gam_test_error<-mean((test_sub$residuals)^2)
+gam_test_error # 15.97974
+
+test_sub %>% 
+  gather(key = "var", value = "value", -Sal, -predicted, -residuals, -Month, -Type, -Zone) %>%  # Get data into shape
+  ggplot(aes(x = value, y = Sal)) +  # Note use of `x` here and next line
+  geom_segment(aes(xend = value, yend = predicted), alpha = .2) +
+  geom_point(aes(color = residuals)) +
+  scale_color_gradient2(low = "blue", mid = "white", high = "red") +
+  guides(color = FALSE) +
+  geom_point(aes(y = predicted), shape = 1) +
+  facet_grid(~ var, scales = "free") +  # Split panels here by `var`
+  theme_bw()
+
+# https://www.r-graph-gallery.com/265-grouped-boxplot-with-ggplot2/
+group_melt<-test_sub %>% 
+  gather(key = "group", value = "groupVal", -Month, -Easting, -Northing, -TempC, -Type, -StreamDist, -Zone, -residuals) 
+var_melt<-group_melt %>%   
+  gather(key = "var", value = "value", -group, -groupVal, -residuals)
+ggplot(var_melt,aes(x=var, y=groupVal, fill=group)) + 
+    geom_boxplot() +
+    facet_wrap(~var, scale="free")
+
+```
