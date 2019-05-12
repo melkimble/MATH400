@@ -89,12 +89,12 @@ sink(OutputCSVFile,append=FALSE,split=TRUE)
 # Setup to send email notifications when my crap finishes.    
 # To search for it, ctrl+f send.mail
 ###################################################################################
-sender <- "spatialmsk@gmail.com"
-recipients <- c("melissa.kimble@maine.edu")
+sender <- ""
+recipients <- c("")
 TheSubject <- paste("DMRData_Analysis",TodayDate)
-TheBody <- paste("Hey Homie,\n",TheSubject,"is done so you should go check and see if anything blew up.")
-ThePasswrd <-"On3Cod3ToRul3Th3mAll"
-MyUserName<-"spatialmsk@gmail.com"
+TheBody <- paste("Hey,\n",TheSubject,"is done so you should go check and see if anything blew up.")
+ThePasswrd <-""
+MyUserName<-""
 
 ###################################################################################
 ## setup
