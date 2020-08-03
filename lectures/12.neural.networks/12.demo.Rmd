@@ -1,0 +1,101 @@
+---
+title: "Netural Network"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+It is recommanded you install a version of python from conda (https://conda.io). Visit https://keras.rstudio.com/index.html for more details.
+
+
+```{r}
+reticulate::use_condaenv("r-tensorflow")
+library(tidyverse)
+library(keras)
+mnist <- dataset_mnist()
+```
+
+```{r}
+plot_mnist <- function(data, idx){
+  image(t(apply(data$x[idx, ,], 2, rev)), col=gray((0:255)/255), main = data$y[idx])
+}
+```
+
+```{r, fig.width = 2, fig.height = 2}
+plot_mnist(mnist$train, 3)
+```
+
+
+```{r, fig.width = 2, fig.height = 2}
+par(mfrow = c(5, 5), mar = c(0, 0, 0, 0))
+for (i in 1:25) plot_mnist(mnist$train, i)
+```
+
+
+```{r}
+x_train <- mnist$train$x
+y_train <- mnist$train$y
+x_test <- mnist$test$x
+y_test <- mnist$test$y
+# reshape
+x_train <- array_reshape(x_train, c(nrow(x_train), 784))
+x_test <- array_reshape(x_test, c(nrow(x_test), 784))
+# rescale
+x_train <- x_train / 255
+x_test <- x_test / 255
+```
+
+```{r}
+y_train <- to_categorical(y_train, 10)
+y_test <- to_categorical(y_test, 10)
+```
+
+```{r}
+model <- keras_model_sequential() 
+model %>% 
+  layer_dense(units = 256, activation = 'relu', input_shape = c(784)) %>% 
+  layer_dropout(rate = 0.4) %>% 
+  layer_dense(units = 128, activation = 'relu') %>%
+  layer_dropout(rate = 0.3) %>%
+  layer_dense(units = 10, activation = 'softmax')
+summary(model)
+```
+
+
+```{r}
+model %>% compile(
+  loss = 'categorical_crossentropy',
+  optimizer = optimizer_adam(),
+  metrics = c('accuracy')
+)
+```
+
+See https://en.wikipedia.org/wiki/Stochastic_gradient_descent for some descriptions of the optimizers.
+
+```{r}
+history <- model %>% fit(
+  x_train, y_train, 
+  epochs = 30, batch_size = 128, 
+  validation_split = 0.2
+)
+```
+
+```{r}
+model %>% evaluate(x_test, y_test)
+```
+
+```{r}
+pred <- model %>% predict_classes(x_test)
+pred
+```
+
+```{r}
+seq_len(10000) %>% discard(~pred[.] == mnist$test$y[.])
+```
+
+```{r, fig.width = 2, fig.height = 2}
+plot_mnist(mnist$test, 3781)
+```

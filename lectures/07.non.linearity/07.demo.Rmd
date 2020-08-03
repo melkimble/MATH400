@@ -1,0 +1,64 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(splines)
+library(gam)
+library(ISLR)
+```
+
+```{r}
+ggplot(Wage) + geom_point(aes(age, wage))
+```
+
+# Cubic spline
+```{r}
+fit_bs <- lm(wage ~ bs(age, knots = c(30, 45, 60)), data = Wage)
+fit_bs2 <- lm(wage ~ bs(age, df = 10), data = Wage)
+```
+
+
+# Natural cubic spline
+```{r}
+fit_ns <- lm(wage ~ ns(age, knots = c(30, 45, 60)), data = Wage)
+fit_ns2 <- lm(wage ~ ns(age, df = 10), data = Wage)
+```
+
+```{r}
+ggplot(Wage, aes(age, wage)) + 
+    geom_point() + 
+    geom_smooth(method = "lm", formula = y ~ ns(x, df = 6), se = FALSE) +
+    geom_smooth(method = "lm", formula = y ~ bs(x, df = 6), color = "red", se = FALSE)
+```
+
+# Smoothing spline
+
+```{r}
+fit_smooth <- smooth.spline(Wage$age, Wage$wage, cv = TRUE)
+ggplot(Wage, aes(age, wage)) + 
+    geom_point() + 
+    geom_smooth()
+```
+
+```{r}
+# with a specific df
+fit_smooth <- smooth.spline(Wage$age, Wage$wage, df = 6)
+Wage2 <- Wage %>% mutate(pred = predict(fit_smooth, age)$y)
+ggplot(Wage2, aes(age, wage)) + 
+    geom_point() + 
+    geom_line(aes(age, pred), color = "blue")
+```
+
+
+
+# GAM
+```{r}
+fit_gam <- gam(wage ~ s(age, 4) + s(year, 5) + education, data = Wage)
+plot(fit_gam)
+```
+
+

@@ -1,0 +1,194 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(ISLR)
+library(glmnet)
+library(pls)
+head(Hitters)
+```
+
+```{r}
+Hitters2 <- Hitters %>% drop_na()
+```
+
+# Ridge regression
+
+```{r}
+x <- model.matrix(Salary ~ ., Hitters2)
+y <- Hitters2$Salary
+ridge_fit <- glmnet(x, y, alpha = 0)
+```
+```{r}
+plot(ridge_fit, xvar = "lambda")
+```
+
+If you prefer ggplot
+```{r}
+solution <- ridge_fit$beta %>%
+    as.matrix() %>% as.data.frame() %>%
+    set_names(ridge_fit$lambda) %>%
+    rownames_to_column("variable") %>%
+    filter(variable != "(Intercept)") %>%
+    gather(-variable, key = "lambda", value = "coef", convert = TRUE)
+ggplot(solution) + geom_line(aes(x = log(lambda), y = coef, color = variable)) +
+    guides(col = guide_legend(nrow = 15))
+```
+
+
+```{r}
+x <- model.matrix(Salary ~ ., Hitters2)
+y <- Hitters2$Salary
+lambda_min <- cv.glmnet(x, y, alpha = 0, nfolds = 10)$lambda.min
+fit <- glmnet(x, y, alpha = 0, lambda = lambda_min)
+fit$beta %>% as.matrix() %>% as_tibble(rownames = "variable")
+```
+
+# LASSO regression
+
+
+```{r}
+x <- model.matrix(Salary ~ ., Hitters2)
+y <- Hitters2$Salary
+lasso_fit <- glmnet(x, y, alpha = 1)
+```
+
+```{r}
+plot(lasso_fit, xvar = "lambda")
+```
+
+If you prefer ggplot
+```{r}
+solution <- lasso_fit$beta %>%
+    as.matrix() %>% as.data.frame() %>%
+    set_names(lasso_fit$lambda) %>%
+    rownames_to_column("variable") %>%
+    filter(variable != "(Intercept)") %>%
+    gather(-variable, key = "lambda", value = "coef", convert = TRUE)
+ggplot(solution) + geom_line(aes(x = log(lambda), y = coef, color = variable)) +
+    guides(col = guide_legend(nrow = 15))
+```
+
+
+
+```{r}
+x <- model.matrix(Salary ~ ., Hitters2)
+y <- Hitters2$Salary
+lambda_min <- cv.glmnet(x, y, alpha = 1, nfolds = 10)$lambda.min
+fit <- glmnet(x, y, alpha = 1, lambda = lambda_min)
+fit$beta %>% as.matrix() %>% as_tibble(rownames = "variable")
+```
+
+# Elastic net
+
+```{r}
+x <- model.matrix(Salary ~ ., Hitters2)
+y <- Hitters2$Salary
+enet_fit <- glmnet(x, y, alpha = 0.5)
+```
+
+```{r}
+plot(enet_fit, xvar = "lambda")
+```
+
+If you prefer ggplot
+```{r}
+solution <- enet_fit$beta %>%
+    as.matrix() %>% as.data.frame() %>%
+    set_names(enet_fit$lambda) %>%
+    rownames_to_column("variable") %>%
+    filter(variable != "(Intercept)") %>%
+    gather(-variable, key = "lambda", value = "coef", convert = TRUE)
+ggplot(solution) + geom_line(aes(x = log(lambda), y = coef, color = variable)) +
+    guides(col = guide_legend(nrow = 15))
+```
+
+
+```{r}
+x <- model.matrix(Salary ~ ., Hitters2)
+y <- Hitters2$Salary
+lambda_min <- cv.glmnet(x, y, alpha = 0.5, nfolds = 10)$lambda.min
+fit <- glmnet(x, y, alpha = 0.5, lambda = lambda_min)
+fit$beta %>% as.matrix() %>% as_tibble(rownames = "variable")
+```
+
+
+How about turning $\alpha$?
+
+```{r}
+nfolds <- 10
+foldid <- sample(1:nfolds, length(y), replace = TRUE)
+do_cv <- function(alpha) {
+  result <- cv.glmnet(x, y, alpha = alpha, nfolds = nfolds, foldid = foldid)
+  tibble(alpha = alpha, lambda = result$lambda.min, cv = min(result$cvm))
+}
+seq(0, 1, 0.1) %>% map_dfr(do_cv) %>% mutate(rank = row_number(cv))
+```
+
+
+# Doing predictions for all the above models
+
+
+```{r}
+x <- model.matrix(Salary ~ ., Hitters2)
+y <- Hitters2$Salary
+lasso_fit <- glmnet(x, y, alpha = 1, lambda = 0.5)
+```
+
+
+I first select some rows and pretended they are new data.
+```{r}
+new_data <- Hitters2 %>% slice(4, 18, 60)
+```
+
+
+```{r}
+predict(lasso_fit, newx = model.matrix(Salary ~ ., new_data))
+```
+
+# PC regression
+
+```{r}
+x <- model.matrix(Salary ~ ., Hitters2)
+pc <- princomp(x)
+x0 <- pc$scores[, 1:5]  # show first 5 scores
+```
+
+```{r}
+pc$loadings
+```
+
+
+```{r}
+pcr_fit <- pcr(Salary ~ ., data = Hitters2, scale = TRUE, validation = "CV")
+MSEP(pcr_fit, estimate = "CV")
+plot(pcr_fit, "validation", estimate = "CV")
+```
+```{r}
+pcr_fit0 <- pcr(Salary ~ ., data = Hitters2, scale = TRUE, ncomp = 7)
+```
+
+I first select some rows and pretend they are new data.
+```{r}
+new_data <- Hitters2 %>% slice(4, 18, 60)
+predict(pcr_fit0, new_data, ncomp = 7) %>% as_tibble()
+```
+
+
+
+```{r}
+pls_fit <- plsr(Salary ~ ., data = Hitters2, scale = TRUE, validation = "CV")
+MSEP(pls_fit, estimate = "CV")
+plot(pls_fit, "validation", estimate = "CV")
+```
+
+```{r}
+pls_fit0 <- plsr(Salary ~ ., data = Hitters2, scale = TRUE, ncomp = 11)
+new_data <- Hitters2 %>% slice(4, 18, 60)
+predict(pls_fit0, new_data, ncomp = 11) %>% as_tibble()
+```
+

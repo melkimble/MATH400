@@ -1,0 +1,175 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+# Dissimilarity
+
+```{r}
+set.seed(1)
+X <- cbind(c(0, 2, 1, 3, 4), c(4, 5, 3, 1, 2))
+plot(X, pch = as.character(1:5))
+```
+
+```{r}
+d <- dist(X)
+as.matrix(d)
+```
+
+
+# K-Mean
+
+```{r}
+set.seed(2)
+x <- matrix(rnorm(50 * 2), ncol = 2)
+x[1:25, 1] <- x[1:25, 1] + 3
+x[1:25, 2] <- x[1:25, 2] - 4
+plot(x)
+```
+
+```{r}
+K <- 2
+km_out <- kmeans(x, K, nstart = 5)
+km_out$cluster
+```
+
+```{r}
+plot(x, col = (km_out$cluster + 1), main = "K-Means Clustering Results", xlab = "", ylab = "", pch = 20, cex = 2)
+```
+
+```{r}
+set.seed(4)
+km_out <- kmeans(x, K, nstart = 20)
+km_out
+```
+
+```{r}
+plot(x, col = (km_out$cluster + 1), main = "K-Means Clustering Results", xlab = "", ylab = "", pch = 20, cex = 2)
+```
+
+```{r}
+set.seed(3)
+km_out <- kmeans(x, K, nstart = 1)
+km_out$tot.withinss
+```
+
+
+```{r}
+K <- 4
+n <- nrow(x)
+km_out <- kmeans(x, K, nstart = 20)
+# CH index
+(km_out$betweenss / (K - 1)) / (km_out$tot.withinss / (n - K))
+```
+
+# K-Medoids
+
+```{r}
+library(cluster)
+pam.fit <- pam(x, 3)
+clusplot(pam.fit)
+```
+
+# Hierarchical clustering
+
+```{r}
+set.seed(2)
+x <- matrix(rnorm(50 * 2), ncol = 2)
+x[1:25, 1] <- x[1:25, 1] + 3
+x[1:25, 2] <- x[1:25, 2] - 4
+plot(x)
+```
+
+```{r}
+hc_complete <- hclust(dist(x), method = "complete")
+hc_average <- hclust(dist(x), method = "average")
+hc_single <- hclust(dist(x), method = "single")
+```
+
+```{r}
+par(mfrow = c(1, 3))
+plot(hc_complete, main = "Complete Linkage", xlab = "", sub = "", cex = .9)
+plot(hc_average, main = "Average Linkage", xlab = "", sub = "", cex = .9)
+plot(hc_single, main = "Single Linkage", xlab = "", sub = "", cex = .9)
+```
+
+```{r}
+cutree(hc_complete, 3)
+```
+
+```{r}
+xsc <- scale(x)
+plot(hclust(dist(xsc), method = "complete"), main = "Hierarchical Clustering with Scaled Features")
+```
+
+```{r}
+x <- matrix(rnorm(30 * 3), ncol = 3)
+dd <- as.dist(1 - cor(t(x)))
+plot(hclust(dd, method = "complete"), main = "Complete Linkage with Correlation-Based Distance", xlab = "", sub = "")
+```
+
+# A Text mining example
+
+```{r}
+library(stringr)
+wiki <- "http://en.wikipedia.org/wiki/"
+titles <- c(
+    "Integral", "Riemann_integral", "Riemann-Stieltjes_integral", "Derivative",
+    "Limit_of_a_sequence", "Edvard_Munch", "Vincent_van_Gogh", "Jan_Matejko",
+    "Lev_Tolstoj", "Franz_Kafka", "J._R._R._Tolkien"
+)
+articles <- character(length(titles))
+
+for (i in 1:length(titles)) {
+    articles[i] <- str_flatten(readLines(paste0(wiki, titles[i])), col = " ")
+}
+```
+
+```{r}
+library(tm)
+docs <- Corpus(VectorSource(articles)) %>%
+    tm_map(content_transformer(function(z) str_replace(z, "<.+?>", " "))) %>%
+    tm_map(content_transformer(function(x) str_replace(x, fixed("\t"), " "))) %>%
+    tm_map(PlainTextDocument) %>%
+    tm_map(removePunctuation) %>%
+    tm_map(stripWhitespace) %>%
+    tm_map(content_transformer(tolower)) %>%
+    tm_map(removeWords, stopwords("english"))
+docsTDM <- TermDocumentMatrix(docs)
+```
+
+```{r}
+t(as.matrix(docsTDM))[, sample(10000, 3)]
+```
+
+```{r}
+library(proxy)
+docsdissim <- dist(t(as.matrix(docsTDM)), method = "cosine")
+```
+
+```{r}
+h <- hclust(docsdissim, method = "single")
+plot(h, labels = titles)
+```
+
+
+```{r}
+h <- hclust(docsdissim, method = "complete")
+plot(h, labels = titles)
+```
+
+
+```{r}
+h <- hclust(docsdissim, method = "average")
+plot(h, labels = titles)
+```
+
+```{r}
+h <- hclust(docsdissim, method = "centroid")
+plot(h, labels = titles)
+```
+
+```{r}
+h <- hclust(docsdissim, method = "ward.D2")
+plot(h, labels = titles)
+```

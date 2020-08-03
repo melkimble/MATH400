@@ -1,0 +1,117 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+This is a lab for Chapter 2.
+
+```{r}
+library(tidyverse)
+income <- read_csv("http://www-bcf.usc.edu/~gareth/ISL/Income1.csv")
+head(income)
+```
+
+```{r}
+# base R graphics
+x0 <- 16
+h <- 1
+flag <- income$Education > x0 - h & income$Education < x0 + h
+plot(income$Education, income$Income, col = c("black", "blue")[flag + 1])
+abline(v = x0)
+abline(v = x0 - h, lty = 2)
+abline(v = x0 + h, lty = 2)
+segments(x0 - h, mean(income$Income[flag]), x0 + h, col = "blue")
+```
+
+```{r}
+# tidyverse style
+x0 <- 20
+h <- 1
+ggplot(income) + geom_point(aes(Education, Income)) +
+    geom_vline(xintercept = x0, linetype = "longdash") +
+    geom_vline(xintercept = x0 - h) +
+    geom_vline(xintercept = x0 + h) +
+    geom_segment(data = income %>%
+                        filter(Education > x0 - h, Education < x0 + h) %>%
+                        summarize(y = mean(Income)),
+                aes(x = x0 - h, y = y, xend = x0 + h, yend = y), color = "red")
+```
+
+
+```{r}
+local_avg <- function(x, y){
+    f <- function(x0, h) mean(y[x > x0 - h & x < x0 + h])
+    return(Vectorize(f))
+}
+
+fhat <- local_avg(income$Education, income$Income)
+curve(fhat(x, h = 1), xlim = range(income$Education))
+```
+
+# Curse of Dimensionality
+
+```{r}
+vball <- function(n) pi ^ (n / 2) / gamma(n / 2 + 1)
+vcube <- function(n) 2^n
+```
+
+```{r}
+n <- 1:10
+ratio <- vball(n) / vcube(n)
+plot(n, ratio, type = "l")
+```
+
+### Bias vs Variance
+
+```{r}
+x <- seq(0, 2 * pi, len = 10)
+e <- rnorm(10, sd = 0.2)
+y <- sin(x) + e
+plot(x, y)
+curve(sin, add = TRUE, col = "blue")
+```
+
+## Hign variance
+
+```{r}
+x <- seq(0, 2 * pi, len = 10)
+e <- rnorm(10, sd = 0.2)
+y <- sin(x) + e
+plot(x, y, ylim = c(-1.5, 1.5))
+curve(sin, add = TRUE, col = "blue")
+lines(x, y, col = "red")
+```
+
+
+## High bias
+
+```{r}
+x <- seq(0, 2 * pi, len = 10)
+e <- rnorm(10, sd = 0.2)
+y <- sin(x) + e
+plot(x, y, ylim = c(-1.5, 1.5))
+curve(sin, add = TRUE, col = "blue")
+fit <- lm(y ~ x)
+lines(x, fitted(fit))
+```
+
+
+### Thin Plate spline
+
+(Actually, we will cover this later)
+
+```{r}
+income <- read_csv("http://www-bcf.usc.edu/~gareth/ISL/Income2.csv")
+head(income)
+```
+
+```{r}
+library(fields)
+library(modelr)
+fit <- Tps(select(income, Education, Seniority), income$Income)
+lonlat <- income %>% do(tibble(lon = seq_range(.$Education, 10), lat = seq_range(.$Seniority, 10)))
+grid <- expand(lonlat, lon, lat)
+result <- grid %>% add_predictions(fit)
+persp(lonlat$lon, lonlat$lat, matrix(result$pred, nc = 10), phi = 45, theta = 45, d = 2)
+```
+

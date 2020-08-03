@@ -1,0 +1,27 @@
+```{r}
+loc <- cmdscale(eurodist)
+x <- loc[, 1]
+y <- -loc[, 2] # reflect so North is at the top
+## note asp = 1, to ensure Euclidean distances are represented correctly
+plot(x, y, type = "n", asp=1)
+text(x, y, rownames(loc), cex = 0.6)
+```
+
+```{r}
+library(MASS)
+loc.sammon <- sammon(eurodist, k=2)$points
+x <- loc.sammon[, 1]
+y <- -loc.sammon[, 2] # reflect so North is at the top
+## note asp = 1, to ensure Euclidean distances are represented correctly
+plot(x, y, type = "n", asp=1)
+text(x, y, rownames(loc.sammon), cex = 0.6)
+```
+
+```{r}
+loc.isoMDS <- isoMDS(eurodist, k=2)$points
+x <- loc.isoMDS[, 1]
+y <- -loc.isoMDS[, 2] # reflect so North is at the top
+## note asp = 1, to ensure Euclidean distances are represented correctly
+plot(x, y, type = "n", asp=1)
+text(x, y, rownames(loc.isoMDS), cex = 0.6)
+```

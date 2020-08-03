@@ -1,0 +1,192 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r}
+library(MASS)
+library(tidyverse)
+library(ISLR)
+head(Smarket)
+```
+
+# Logistic Regression
+
+```{r}
+glm_fit <- glm(Direction ~ Lag1 + Lag2,
+    data = Smarket,
+    family = binomial
+)
+glm_fit
+```
+
+```{r}
+library(modelr)
+new_data <- read_csv("Lag1, Lag2
+                      0.5, 0.3
+                      0.4, 0.3")
+new_data %>% add_predictions(glm_fit) %>% mutate(prob = exp(pred)/ (1 + exp(pred)))
+```
+
+# ROC curve
+
+```{r}
+Smarket2 <- Smarket %>% 
+    add_predictions(glm_fit) %>% 
+    mutate(prob = exp(pred)/ (1 + exp(pred)), EstDir = ifelse(prob > 0.5, "Up", "Down"))
+Smarket2 %>% count(Direction, EstDir) %>% spread(Direction, n)
+```
+
+```{r}
+library(tidymodels)
+autoplot(roc_curve(Smarket2, Direction, prob))
+roc_auc(Smarket2, Direction, prob)
+```
+
+# Multinomial logistic
+
+
+variable name |  type |  about the variable 
+--------------|--------|-------------------------------------------------------
+id          |    scale|  student id                  
+female      |  nominal|  (0/1)        
+race        |  nominal|  ethnicity (1=hispanic 2=asian 3=african-amer 4=white)        
+ses         |  ordinal|  socio economic status (1=low 2=middle 3=high)           
+schtyp      |  nominal|  type of school (1=public 2=private)
+prog        |  nominal|  type of program (1=general 2=academic 3=vocational)
+read        |    scale|  standardized reading score
+write       |    scale|  standardized writing score
+math        |    scale|  standardized math score
+science     |    scale|  standardized science score
+socst       |    scale|  standardized social studies score
+hon         |  nominal|  honors english (0/1)
+
+```{r}
+ml <- read_csv("hsb2.csv")
+```
+
+```{r}
+hsb2 <- ml %>% mutate(
+    prog = recode_factor(prog, `1` = "general", `2` = "academic", `3` = "vocational"),
+    ses = recode_factor(ses, `1` = "low", `2` = "middle", `3` = "high"))
+```
+
+```{r}
+hsb2 %>% count(prog, ses)  %>% spread(prog, n)
+```
+
+```{r}
+hsb2 %>% group_by(prog) %>% summarize(mwrite = mean(write))
+```
+
+```{r}
+library(nnet)
+multi_fit <- multinom(prog ~ ses + write, data = hsb2)
+```
+
+```{r}
+new_data <- tibble(ses = "middle", write = 56)
+predict(multi_fit, new_data, type = "probs")
+
+
+# tidyverse
+new_data %>% add_predictions(multi_fit)
+```
+
+```{r}
+predict(multi_fit, new_data)
+
+# a few month later
+# new_data %>% add_predictions(multi_fit, type = "probs")
+```
+
+# LDA
+```{r}
+lda_fit <- lda(Direction ~ Lag1 + Lag2, data = Smarket)
+```
+
+```{r}
+Smarket3 <- Smarket %>% mutate(EstDir = predict(lda_fit, newdata = Smarket)$class)
+Smarket3 %>% count(Direction, EstDir) %>% spread(Direction, n)
+```
+
+
+```{r}
+new_data <- read_csv("Lag1, Lag2
+                      0.5, 0.3
+                      0.4, 0.3")
+
+predict(lda_fit, new_data)
+
+# modelr magic doesn't work now
+# new_data %>% add_predictions(lda_fit)
+```
+
+## An exmple with more than one class
+
+```{r}
+head(iris)
+```
+
+```{r}
+iris_fit <- lda(Species ~ .,  data = iris)
+```
+
+```{r}
+new_data <-  tibble(Sepal.Length = 5.906, Sepal.Width = 2.77, Petal.Length = 3, Petal.Width = 0.246)
+predict(iris_fit, new_data)$posterior
+```
+
+```{r}
+iris2 <- iris %>% bind_cols(as_tibble(predict(iris_fit, newdata = iris)$x))
+ggplot(iris2) + geom_point(aes(LD1, LD2, color = Species))
+```
+
+# Reduced rank LDA
+
+```{r}
+# only use LD1
+predict(iris_fit, new_data, dimen = 1)
+```
+
+# Explaining kNN
+
+```{r}
+library(mvtnorm)
+g1 <- rmvnorm(30, mean=c(-0.5,0))
+g2 <- rmvnorm(20, mean=c(1,-1))
+g3 <- rmvnorm(20, mean=c(1,1))
+x <- rbind(g1, g2, g3)
+colnames(x) <- c("x1", "x2")
+x <- as_tibble(x)
+y <- rep(c("a", "b", "c"), c(30, 20, 20))
+knn_example <- bind_cols(x, y = y)
+```
+
+```{r}
+ggplot(knn_example) + geom_point(aes(x1, x2, color = y))
+```
+
+```{r}
+k = 7
+point = c(-1, 0)
+knn_neighor <- knn_example %>% 
+  mutate(dist = sqrt((x1 - point[1])^2 + (x2 - point[2])^2)) %>%
+  filter(row_number(dist) <= k)
+ggplot(knn_example) +
+  geom_point(data = knn_neighor, aes(x1, x2), alpha = 0.5, size = 5) +
+  geom_segment(data = knn_neighor, aes(x = x1, y = x2, xend = point[1], yend = point[2], color = y)) +
+  geom_point(aes(x1, x2, color = y)) +
+  annotate("point", x = point[1], y = point[2])
+```
+
+
+```{r}
+library(class)
+new_data <- read_csv("x1, x2
+                      0.2, 1
+                      0.6, -1")
+new_data %>% mutate(est_class = knn(knn_example %>% select(x1, x2), new_data, knn_example %>% pull(y), k = 5))
+```
+
+

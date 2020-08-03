@@ -1,0 +1,226 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+# Regression demo
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+library(gapminder)
+gapminder
+```
+
+## Example 1
+
+We want to predict `lifeExp` using `year` and `gdpPercap`.
+
+```{r}
+fit <- lm(lifeExp ~ year + gdpPercap, data = gapminder)
+fit
+```
+
+## confidence intervals of coefficients
+```{r}
+confint(fit)
+confint(fit, "year")
+confint(fit, 2)
+confint(fit, level = 0.9)
+```
+
+
+```{r}
+summary(fit)
+```
+
+
+```{r}
+library(broom)
+glance(fit)
+```
+
+
+## Comparing models via adjusted $R^2$
+
+```{r}
+fit0 <- lm(lifeExp ~ year, data = gapminder)
+fit2 <- lm(lifeExp ~ year + pop, data = gapminder)
+fit3 <- lm(lifeExp ~ year + gdpPercap + pop, data = gapminder)
+```
+
+```{r}
+bind_rows(
+    glance(fit0),
+    glance(fit),
+    glance(fit2),
+    glance(fit3)
+)
+```
+
+## Assessing the Accuracy of the estimated regression model
+
+```{r}
+library(modelr)
+rp <- resample_partition(gapminder, c(train = 0.7, test = 0.3))
+rp
+training_set <- as.tibble(rp$train)
+testing_set <- as.tibble(rp$test)
+```
+
+
+```{r}
+fit0 <- lm(lifeExp ~ year, data = training_set)
+fit1 <- lm(lifeExp ~ year + gdpPercap, data = training_set)
+fit2 <- lm(lifeExp ~ year + pop, data = training_set)
+fit3 <- lm(lifeExp ~ year + gdpPercap + pop, data = training_set)
+```
+
+```{r}
+c(mse(fit0, testing_set), 
+  mse(fit1, testing_set), 
+  mse(fit2, testing_set), 
+  mse(fit3, testing_set))
+```
+
+## Interpreting regression coefficients
+
+
+```{r}
+supermodel <- read_tsv("supermodel.dat")
+supermodel
+(fit <- lm(salary ~ age + years + beauty, data = supermodel))
+```
+
+```{r}
+ggplot(supermodel) + geom_point(aes(x = age, y = years))
+```
+
+### Correlations among preditors
+
+```{r}
+x1 <- rnorm(100)
+x2 <- 2 * x1 + rnorm(100, sd = 0.1)
+y <- 3 + 2 * x1 + rnorm(100, sd = 0.5)
+(example <- tibble(y = y, x1 = x1, x2 = x2))
+```
+```{r}
+ggplot(example) + geom_point(aes(x1, y))
+ggplot(example) + geom_point(aes(x1, x2))
+```
+```{r}
+(fit <- lm(y ~ x1 + x2, data = example))
+```
+
+## Non linear transformation of the predictors
+
+```{r}
+rp <- resample_partition(gapminder, c(train = 0.7, test = 0.3))
+rp
+training_set <- as.tibble(rp$train)
+testing_set <- as.tibble(rp$test)
+fit_linear <- lm(lifeExp ~ gdpPercap, data = training_set)
+fit_quad <- lm(lifeExp ~ gdpPercap + I(gdpPercap^2), data = training_set)
+```
+
+Which one is better?
+```{r}
+c(mse(fit_linear, testing_set), mse(fit_quad, testing_set))
+```
+
+How about adding a cubic term? Adding `I(gdpPercap^3)` term? No. Use `poly`!
+
+```{r}
+fit_cubic <- lm(lifeExp ~ poly(gdpPercap, 3), data = training_set)
+mse(fit_cubic, testing_set)  # even better
+```
+```{r}
+ggplot(gapminder, aes(x = gdpPercap, y = lifeExp)) + geom_point() + 
+    geom_smooth(method = "lm", formula = y ~ poly(x, 10))
+```
+
+
+Let's be crazy
+```{r}
+fit_poly <- lm(lifeExp ~ poly(gdpPercap, 8), data = training_set)
+mse(fit_poly, testing_set)  # becoming worse
+```
+
+
+Of course, we are not limited to polynomials
+
+```{r}
+fit_log <- lm(lifeExp ~ log(gdpPercap), data = training_set)
+mse(fit_log, testing_set)  # wow, even better
+```
+
+In fact, look at this
+```{r}
+ggplot(gapminder, aes(x = gdpPercap, y = lifeExp)) + geom_point() + 
+    geom_smooth(method = "lm", formula = y ~ log(x))
+```
+
+## Qualitative Predictor
+
+```{r}
+gapminder %>% distinct(country)
+```
+
+Let's consider a smaller
+```{r}
+little_gapminder <- gapminder %>% filter(str_detect(country, "^H")) %>%
+    mutate(country = fct_drop(country))
+little_gapminder %>% distinct(country)
+```
+
+
+Now, we want to use `country` to predict `lifeExp`.
+
+```{r}
+(fit <- lm(lifeExp ~ country, data = little_gapminder))
+```
+
+Under the hood.
+
+```{r}
+contrasts(little_gapminder$country)
+```
+
+## A common mistake
+
+```{r}
+(example2 <- tibble(x = sample(1:3, 10, replace = TRUE), y = rnorm(10)))
+```
+
+```{r}
+lm(y ~ x, data = example2)  # wrong
+```
+
+```{r}
+example2_corrected <- example2 %>% mutate(x = recode_factor(x, `1` = "blue", `2` = "green", `3` = "red"))
+example2_corrected
+```
+
+```{r}
+lm(y ~ x, data = example2_corrected)  # correct
+```
+
+```{r}
+contrasts(example2_corrected$x)
+```
+
+## Prediction
+
+```{r}
+fit <- lm(lifeExp ~ year, data = gapminder)
+new_data <- tibble(year = c(2000, 2010))
+
+# the classic way
+predict(fit, new_data)
+
+# in tidyverse style
+library(modelr)
+new_data %>% add_predictions(fit)
+```

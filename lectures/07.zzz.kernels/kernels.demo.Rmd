@@ -1,0 +1,52 @@
+```{r}
+library(tidyverse)
+library(tidymodels)
+income <- read.csv("http://www-bcf.usc.edu/~gareth/ISL/Income2.csv")
+head(income)
+```
+
+
+# Density estimation
+
+```{r}
+plot(density(income$Income))
+```
+
+```{r}
+ggplot(income) + geom_density(aes(x = Income), bw = 5, fill = "red")
+```
+
+
+# Loess
+
+```{r}
+loess_fit <- loess(Income ~ Education, data = income)
+new_data <- tibble(Education = modelr::seq_range(income$Education, 100))
+pred <- predict(loess_fit, new_data)
+```
+
+```{r}
+plot(new_data$Education, pred, type = "l")
+```
+
+# 2 dimenstion LOESS
+
+```{r}
+loess_fit2 <- loess(Income ~ Education + Seniority, data = income)
+```
+
+
+```{r}
+xvals <- modelr::seq_range(income$Education, 10)
+yvals <- modelr::seq_range(income$Seniority, 10)
+griddf <- modelr::data_grid(income, Education = xvals, Seniority= yvals)
+```
+
+
+# Loess
+
+```{r}
+griddg <- matrix(predict(loess_fit2, griddf), 10, 10)
+persp(xvals, yvals, griddg, phi=45, theta=45, d=2)
+```
+

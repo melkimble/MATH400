@@ -1,0 +1,200 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+# Classificaiton Tree
+
+```{r}
+library(MASS)
+library(tidyverse)
+library(tidymodels)
+library(tree)
+library(kernlab)  # for the data spam
+data(spam)
+tree_fit <- tree(type~., spam)
+summary(tree_fit)
+```
+
+```{r}
+plot(tree_fit, type = "uniform")
+text(tree_fit, pretty = 1, all = TRUE, cex = 0.7)
+```
+
+```{r}
+set.seed(2)
+rs <- initial_split(spam, prop = 0.7)
+spam_trainset <- as_tibble(training(rs))
+spam_testset <- as_tibble(testing(rs))
+train_fit <- tree(type ~ ., spam_trainset)
+summary(train_fit)
+```
+
+```{r}
+plot(train_fit, type = "uniform")
+text(train_fit, pretty = 1, all = TRUE, cex = 0.7)
+```
+
+
+```{r}
+spam_testset %>% modelr::add_predictions(train_fit, type = "class") %>%
+    accuracy(type, pred)
+```
+
+
+```{r}
+set.seed(1)
+cv_fit <- cv.tree(train_fit, method = "misclass")
+plot(cv_fit$size, cv_fit$dev, type = "b")
+```
+
+```{r}
+prune_fit <- prune.misclass(train_fit, best = 6)
+plot(prune_fit, type = "uniform")
+text(prune_fit, all = TRUE, cex = 0.7)
+```
+
+```{r}
+spam_testset %>% modelr::add_predictions(prune_fit, type = "class") %>%
+    accuracy(type, pred)
+```
+
+# Regression Tree
+
+```{r}
+head(Boston)
+```
+
+```{r}
+set.seed(2)
+rs <- initial_split(Boston, prop = 0.7)
+boston_trainset <- as_tibble(training(rs))
+boston_testset <- as_tibble(testing(rs))
+```
+
+```{r}
+tree_boston <- tree(medv~., boston_trainset)
+plot(tree_boston, type = "uniform")
+text(tree_boston, all = TRUE, cex = 0.7)
+```
+```{r}
+modelr::mse(tree_boston, boston_testset)
+```
+
+```{r}
+lm_fit <- lm(medv~., boston_trainset)
+modelr::mse(lm_fit, boston_testset)
+```
+
+
+```{r}
+set.seed(2)
+cv_fit <- cv.tree(tree_boston)
+plot(cv_fit$size, cv_fit$dev, type = "b")
+```
+
+
+```{r}
+prune_boston <- prune.tree(tree_boston, best = 6)
+modelr::mse(prune_boston, boston_testset)
+```
+
+
+# Mars
+
+```{r}
+library(earth)
+earth_boston <- earth(medv~., boston_trainset)
+modelr::mse(earth_boston, boston_testset)
+```
+
+```{r}
+plotmo(earth_boston)
+```
+
+# Random Forest
+
+```{r}
+library(randomForest)
+# use all predictor
+set.seed(2)
+rf_boston <- randomForest(medv~., boston_trainset, mtry = 13)
+rf_boston
+```
+
+```{r}
+modelr::mse(rf_boston, boston_testset)
+```
+
+
+```{r}
+set.seed(2)
+rf_boston2 <- randomForest(medv~., boston_trainset, mtry = sqrt(13), importance = TRUE)
+```
+
+```{r}
+modelr::mse(rf_boston2, boston_testset)
+```
+
+```{r}
+importance(rf_boston2)
+```
+
+```{r}
+varImpPlot(rf_boston2)
+```
+
+
+# Gradient Boosting
+
+```{r}
+set.seed(1)
+library(gbm)
+boost_boston <- gbm(medv~., data= boston_trainset, distribution = "gaussian", n.trees = 1000, shrinkage = 0.01)
+```
+
+```{r}
+summary(boost_boston)
+```
+
+```{r}
+par(mfrow = c(1, 2))
+plot(boost_boston, i.var = "rm")
+plot(boost_boston, i.var = "lstat")
+```
+
+
+```{r}
+# note: the `modelr::mse` function doesn't work
+pred <- predict(boost_boston, boston_testset, n.trees=1000)
+mean((boston_testset$medv - pred)^2)
+```
+
+
+# Extreme gradient boosting
+
+```{r}
+library(xgboost)
+m <- model.matrix(medv~., data = boston_trainset)
+xgboost_boston <- xgboost(data = m, label = boston_trainset$medv, nrounds = 1000, verbose = 0, objective = "reg:linear")
+```
+
+
+
+```{r}
+# note: the `modelr::mse` function doesn't work
+new_matrix <- model.matrix(medv~., data = boston_testset)
+pred <- predict(xgboost_boston, new_matrix)
+mean((boston_testset$medv - pred)^2)
+```
+
+
+```{r}
+imp <- xgb.importance(model = xgboost_boston)
+imp
+```
+
+```{r}
+xgb.ggplot.importance(imp, rel_to_first = TRUE)
+```
+

@@ -1,0 +1,189 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+
+library(ISLR)
+head(Auto)
+```
+
+
+# Initial split
+
+`rsample::initial_split` is an alternative to `modelr::resample_partition`
+
+```{r}
+auto_split <- initial_split(Auto, prop = 0.7)
+train_data <- training(auto_split)
+test_data <- testing(auto_split)
+```
+
+## A regression problem
+
+```{r}
+folds <- vfold_cv(train_data, 5)
+```
+
+
+
+```{r}
+folds %>% mutate(fits = splits %>% map(~lm(mpg ~ poly(horsepower, 3), data = analysis(.)))) %>%
+        mutate(mses = map2_dbl(splits, fits, ~ modelr::mse(.y, assessment(.x)))) %>%
+        summarize(mean(mses))
+```
+
+
+```{r}
+do_cv <- function(folds, d) {
+  folds %>% mutate(fits = splits %>% map(~lm(mpg ~ poly(horsepower, d), data = analysis(.)))) %>%
+          mutate(mses = map2_dbl(splits, fits, ~ modelr::mse(.y, assessment(.x)))) %>%
+          summarize(sum(mses))
+}
+```
+
+```{r}
+map_dfr(1:10, ~do_cv(folds, .), .id = "d")
+```
+
+
+```{r}
+fit <- lm(mpg ~ poly(horsepower, 2), data = train_data)
+modelr::mse(fit, test_data)
+```
+
+
+I have presented you a very general appaoch to perform cross validation, however, there is a simpler command to obtain the prediction error for linear regression problems.
+
+```{r}
+fit <- glm(mpg ~ poly(horsepower, 3), train_data, family = "gaussian")
+boot::cv.glm(train_data, fit, K = 5)$delta[1]
+```
+
+
+## A classification problem
+
+```{r}
+head(Smarket)
+```
+
+```{r}
+smarket_split <- initial_split(Smarket, prop = 0.7)
+train_data <- training(smarket_split)
+test_data <- testing(smarket_split)
+```
+
+```{r}
+folds <- vfold_cv(train_data, 5)
+```
+
+
+```{r}
+cutoff <- 0.5
+folds %>% mutate(fits = splits %>% map(~glm(Direction ~ Lag1 + Lag2, data = analysis(.), family = "binomial"))) %>%
+    transmute(acc = map2_dbl(
+        splits, fits, 
+        ~ assessment(.x) %>% modelr::add_predictions(.y) %>% mutate(prob = exp(pred)/ (1 + exp(pred))) %>% 
+            mutate(EstDir = factor(ifelse(prob > cutoff, "Up", "Down"), levels = levels(Direction))) %>%
+            accuracy(Direction, EstDir) %>% pull(.estimate)
+    )) %>%
+    summarize(miscls_rate = 1 - mean(acc))
+```
+
+We need to compute the misclassificaiton rate for different `cutoff`. Let's do everything in one shot
+
+```{r}
+folds %>% mutate(fits = splits %>% map(~glm(Direction ~ Lag1 + Lag2, data = analysis(.), family = "binomial"))) %>%
+    transmute(results = map2(
+        splits, fits, 
+        ~ assessment(.x) %>% modelr::add_predictions(.y) %>% mutate(prob = exp(pred)/ (1 + exp(pred))) 
+    )) %>% 
+    crossing(cutoff = seq(0.45, 0.54, 0.01)) %>%
+    mutate(acc = map2_dbl(results, cutoff, 
+                         ~ .x %>% mutate(EstDir = factor(ifelse(prob > .y, "Up", "Down"), levels = levels(Direction))) %>%
+                            accuracy(Direction, EstDir) %>% pull(.estimate)
+           )) %>%
+    group_by(cutoff) %>%
+    summarize(miscls_rate = 1 - mean(acc))
+```
+
+
+Similar to the regression problem, there is a simpler command to obtain the prediction error for classificaiton problems.
+Note: we need the `cost` function to measure misclassification rate.
+```{r}
+fit <- glm(Direction ~ Lag1 + Lag2, train_data, family = "binomial")
+cost <- function(r, pi) mean(r != (pi > 0.5))
+boot::cv.glm(train_data, fit, cost = cost, K = 5)$delta[1]
+```
+
+# Bootstrap
+
+
+```{r}
+Auto %>% summarize(r = cor(mpg, horsepower)) %>% pull(r)
+```
+
+To get the "classical" confidence interval
+```{r}
+with(Auto, cor.test(mpg, horsepower))
+```
+
+Use bootstrap to obtain a confidence interval
+
+```{r}
+boots <- bootstraps(Auto, times = 500)
+boot_sample <- boots %>% transmute(r = map_dbl(splits, ~ with(analysis(.), cor(mpg, horsepower))))
+```
+
+```{r}
+ggplot(boot_sample) + geom_histogram(aes(x = r), bins = 20)
+```
+
+A confidence interval for correlation (bootstrap percentile)
+```{r}
+boot_sample$r %>% quantile(prob = c(0.025, 0.975))
+```
+
+Another alternative of bootstrap CI (bootstrap t CI)
+
+```{r}
+r <- with(Auto, cor(mpg, horsepower))
+se <- sd(boot_sample$r)
+c(r - 2 * se, r + 2 * se)
+```
+
+
+
+# Using Bootstrap to calcuate prediction error
+
+
+```{r}
+boots %>% mutate(fits = splits %>% map(~lm(mpg ~ poly(horsepower, 3), data = analysis(.)))) %>%
+        mutate(mses = map2_dbl(splits, fits, ~ modelr::mse(.y, assessment(.x)))) %>%
+        summarize(sum(mses))
+```
+
+
+
+# Permutation tests
+
+Recall that the sample correlation between `mpg` and `horsepower` is around -0.78.
+
+```{r}
+perms <- modelr::permute(Auto, 1000, mpg)
+perm_sample <- perms %>% transmute(r = map_dbl(perm, ~with(as_tibble(.), cor(mpg, horsepower))))
+```
+
+```{r}
+# ggplot(Auto) + geom_point(aes(mpg, horsepower))
+ggplot(as_tibble(perms$perm[[2]])) + geom_point(aes(mpg, horsepower))
+```
+
+
+```{r}
+ggplot(perm_sample) + geom_histogram(aes(x = r), bins = 20)
+```
