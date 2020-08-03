@@ -1,0 +1,146 @@
+Using the `Boston` data set from the library `MASS`, fit classification models in order to predict whether a given town has a crime rate above or below the median. 
+
+```{r include = FALSE}
+#knitr::opts_chunk$set(echo=FALSE)
+LibraryList<-c("MASS","corrplot","tibble","modelr","ggplot2","gridExtra","dplyr","tidyr","tidymodels")
+for (TheLibrary in LibraryList)
+{
+  if(TheLibrary %in% rownames(installed.packages()) == FALSE) install.packages(TheLibrary)
+}
+library(tidyr)
+library(dplyr)
+library(tibble)
+library(modelr)
+library(corrplot)
+library(MASS)
+library(ggplot2)
+library(gridExtra)
+library(tidymodels)
+
+head(Boston)
+```
+
+(a) Split the data into training and test set.
+
+```{r}
+Boston$crim01<-as.integer(as.logical(Boston$crim>median(Boston$crim)))
+
+rp <- modelr::resample_partition(Boston, c(train = 0.7, test = 0.3))
+training_set <- as_tibble(rp$train)
+testing_set <- as_tibble(rp$test)
+```
+
+(b) Fit a logisitic regression using the training set to predict the probability that a given town has a crime rate above or below the median.
+```{r}
+names(Boston)
+
+zn<-ggplot(Boston, aes(y=crim01,x=zn)) + geom_point()
+indus<-ggplot(Boston, aes(y=crim01,x=indus)) + geom_point()
+chas<-ggplot(Boston, aes(y=crim01,x=chas)) + geom_point()
+nox<-ggplot(Boston, aes(y=crim01,x=nox)) + geom_point()
+rm<-ggplot(Boston, aes(y=crim01,x=rm)) + geom_point()
+age<-ggplot(Boston, aes(y=crim01,x=age)) + geom_point()
+dis<-ggplot(Boston, aes(y=crim01,x=dis)) + geom_point()
+rad<-ggplot(Boston, aes(y=crim01,x=rad)) + geom_point()
+tax<-ggplot(Boston, aes(y=crim01,x=tax)) + geom_point()
+ptratio<-ggplot(Boston, aes(y=crim01,x=ptratio)) + geom_point()
+black<-ggplot(Boston, aes(y=crim01,x=black)) + geom_point()
+lstat<-ggplot(Boston, aes(y=crim01,x=lstat)) + geom_point()
+medv<-ggplot(Boston, aes(y=crim01,x=medv)) + geom_point()
+
+# visible discrimination between nox, dis
+grid.arrange(zn,indus,chas,nox,rm,age,dis,rad,tax,ptratio,black,lstat,medv, ncol = 4, nrow = 4)
+
+# Combining correlogram with the significance test
+# http://www.sthda.com/english/wiki/visualize-correlation-matrix-using-correlogram
+cor_mtest <- function(mat, ...) {
+    mat <- as.matrix(mat)
+    n <- ncol(mat)
+    pval<- matrix(NA, n, n)
+    diag(pval) <- 0
+    for (i in 1:(n - 1)) {
+        for (j in (i + 1):n) {
+            tmp <- cor.test(mat[, i], mat[, j], ...)
+            pval[i, j] <- pval[j, i] <- tmp$p.value
+        }
+    }
+  colnames(pval) <- rownames(pval) <- colnames(mat)
+  pval
+}
+# matrix of the p-value of the correlation
+pval <- cor_mtest(Boston)
+head(pval[, 1:5])
+
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+BostonCorr<-cor(Boston)
+
+corrplot(BostonCorr, method="color", col=col(200),  
+         type="upper", order="hclust", 
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.col="black", tl.srt=45, #Text label color and rotation
+         # Combine with significance
+         # Add significance level to the correlogram
+         # Correlations with p-value > 0.01 (sig.level) are considered insignificant (insig) and left "blank"; otherwise
+         # the color is associated with the neg or pos correlation of two variables
+         p.mat = pval, sig.level = 0.01, insig = "blank", 
+         # hide correlation coefficient on the principal diagonal
+         diag=FALSE, number.cex=0.75
+         )
+
+# nox and dis are a bit strongly negatively correlated (-0.77)
+# crim01 is correlated with nox (+0.72), dis (-0.62), rad (+0.62), tax (+0.61), age (+0.61), and indus (0.60)
+# because nox and dis have a strong negative correlation (-0.77), I chose the next highest correlation that also had visible discrimination
+# with crime (but not as highly correlated), which was rad. tax (+0.67), indus (+0.76), and age (+0.73) were all had relatively high positive 
+# correlations to nox (+0.67, +0.76, and +0.73).
+# with all of these variables and drop them periodically
+
+# keep mpg, crim01, weight, and acceleration
+#ColKeep <- names(Boston) %in% c("crim","crim01", "nox","rad") 
+#Boston_sub <- Boston[ColKeep]
+
+glm_fit <- glm(crim01 ~ nox + rad, data = training_set, family=binomial)
+glm_fit
+
+
+```
+
+(c) Calucate the misclassification rate, sensitivity and specificity of the model in predicting the test set.
+
+False positive rate: The fraction of negative samples that are classified as positive
+False negative rate: The fraction of positive samples that are classified as negative
+Sensitivity: True positive rate; TPR = TruePositives/Positives
+Specificity: True negative rate; TNR = TrueNegatives/Negatives
+Precision: True positive/ Test Positive
+False discovery rate: False positive/ Test Positive
+
+```{r}
+
+#test error
+TestPred <- testing_set %>% 
+    add_predictions(glm_fit) %>% 
+    mutate(prob = exp(pred)/ (1 + exp(pred)), EstCrim = ifelse(prob > 0.5, 1, 0))
+PredTable<-TestPred %>% count(crim01, EstCrim) %>% spread(crim01, n)
+PredTable2<-cbind(PredTable$`0`,PredTable$`1`)
+TestError<-(1-(sum(diag(PredTable2))/sum(PredTable2)))
+TestError # 0.1315789 ; also missclassification rate
+
+Sensitivity<-(PredTable2[1,1])/(PredTable2[1,1]+PredTable2[2,1]) #0.884058
+Specificity<-PredTable2[2,2]/(PredTable2[1,2]+PredTable2[2,2]) #0.8554217
+
+FalseDiscoveryRate<-PredTable2[1,2]/(PredTable2[1,2]+PredTable2[1,1])
+
+
+
+
+```
+
+
+(d) Draw an ROC curve and calculate the value of AUC.
+AUC = True positive rate vs false positive rate
+
+```{r}
+
+autoplot(roc_curve(TestPred, as.factor(crim01), prob))
+roc_auc(TestPred, as.factor(crim01), prob)
+
+```

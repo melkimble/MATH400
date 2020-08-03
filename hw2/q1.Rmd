@@ -1,0 +1,230 @@
+In this problem, you will develop a model to predict whether a given car gets high or low gas mileage based on the Auto data set.
+
+```{r include = FALSE}
+#knitr::opts_chunk$set(echo=FALSE)
+LibraryList<-c("corrplot","RColorBrewer","tibble","ggplot2", "tidyverse","ISLR","gridExtra","broom","modelr","tidymodels","MASS","dplyr","purrr","stringi","class")
+for (TheLibrary in LibraryList)
+{
+  if(TheLibrary %in% rownames(installed.packages()) == FALSE) install.packages(TheLibrary)
+}
+#update.packages(ask = FALSE)
+library(corrplot)
+library(RColorBrewer)
+library(stringi)
+library(purrr)
+library(tibble)
+library(MASS)
+library(ggplot2)
+library(gridExtra)
+library(dplyr)
+library(tidyverse)
+library(broom)
+library(modelr)
+library(tidymodels)
+library(ISLR)
+library(class)
+
+head(Auto)
+```
+
+
+(a) Create a binary variable, `mpg01`, that contains a 1 if mpg contains a value above its median, and a 0 if `mpg` contains a value below its median. You can compute the median using the `median()` function.
+
+```{r}
+Auto$mpg01<-as.integer(as.logical(Auto$mpg>median(Auto$mpg)))
+
+```
+
+
+(b)  Explore the data graphically in order to investigate the association between `mpg01` and the other features. Which of the other features seem most likely to be useful in predicting `mpg01`? Scatterplots and boxplots may be useful tools to answer this question. Describe your findings.
+
+`Horsepower`, `weight`, and `acceleration` will likely be the most useful in predicting `mpg01`. There is a distinction between 0 and 1 values that a log transform can be applied to. There needs to be a distinction between 0 and 1 values for there to be discrimination within the dependent varaible. This is visible in the scatterplot for `horsepower`, `weight`, and `acceleration`. The other variables have too much or complete overlap in 1 and 0 values.
+
+`Horsepower` and `weight` are highly correlated (0.86), therefore it may not be appropriate to use both in the same model (confounding variables). `Weight` has a higher corrleation with `mpg` and `mpg01` than `horsepower`, so will be used instead. 
+
+```{r}
+names(Auto)
+
+cyl<-ggplot(Auto, aes(y=mpg01,x=cylinders)) + geom_point()
+displ<-ggplot(Auto, aes(y=mpg01,x=displacement)) + geom_point()
+horse<-ggplot(Auto, aes(y=mpg01,x=horsepower)) + geom_point()
+weight<-ggplot(Auto, aes(y=mpg01,x=weight)) + geom_point()
+acc<-ggplot(Auto, aes(y=mpg01,x=acceleration)) + geom_point()
+yr<-ggplot(Auto, aes(y=mpg01,x=year)) + geom_point()
+origin<-ggplot(Auto, aes(y=mpg01,x=origin)) + geom_point()
+name<-ggplot(Auto, aes(y=mpg01,x=name)) + geom_point()
+
+grid.arrange(cyl, displ, horse,weight,acc,yr,origin,name, ncol = 3, nrow = 3)
+
+# Combining correlogram with the significance test
+# http://www.sthda.com/english/wiki/visualize-correlation-matrix-using-correlogram
+cor_mtest <- function(mat, ...) {
+    mat <- as.matrix(mat)
+    n <- ncol(mat)
+    pval<- matrix(NA, n, n)
+    diag(pval) <- 0
+    for (i in 1:(n - 1)) {
+        for (j in (i + 1):n) {
+            tmp <- cor.test(mat[, i], mat[, j], ...)
+            pval[i, j] <- pval[j, i] <- tmp$p.value
+        }
+    }
+  colnames(pval) <- rownames(pval) <- colnames(mat)
+  pval
+}
+# matrix of the p-value of the correlation
+pval <- cor_mtest(Auto[,!names(Auto) %in% c("name")])
+head(pval[, 1:5])
+
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+AutoCorr<-cor(Auto[,!names(Auto) %in% c("name")])
+
+corrplot(AutoCorr, method="color", col=col(200),  
+         type="upper", order="hclust", 
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.col="black", tl.srt=45, #Text label color and rotation
+         # Combine with significance
+         # Add significance level to the correlogram
+         # Correlations with p-value > 0.01 (sig.level) are considered insignificant (insig) and left "blank"; otherwise
+         # the color is associated with the neg or pos correlation of two variables
+         p.mat = pval, sig.level = 0.01, insig = "blank", 
+         # hide correlation coefficient on the principal diagonal
+         diag=FALSE 
+         )
+
+
+# keep mpg, mpg01, weight, and acceleration
+ColKeep <- names(Auto) %in% c("mpg","mpg01", "weight","acceleration") 
+Auto_sub <- Auto[ColKeep]
+
+
+```
+(c) Split the data into a training set and a test set.
+
+```{r}
+rp <- resample_partition(Auto_sub, c(train = 0.7, test = 0.3))
+training_set <- as_tibble(rp$train)
+testing_set <- as_tibble(rp$test)
+```
+
+
+(d) Perform LDA on the training data in order to predict `mpg01` using the variables that seemed most associated with `mpg01` in (b). What is the test error of the model obtained?
+
+
+```{r}
+lda_fit <- lda(as.factor(mpg01) ~ weight + acceleration, data = training_set)
+lda_fit
+
+#train error
+TrainPred<-predict(lda_fit, training_set)
+PredTable <- table(TrainPred$class, training_set$mpg01)
+# 1 - (total correct / total)
+TrainError<-(1-(sum(diag(PredTable))/sum(PredTable)))
+TrainError # 0.1313869
+
+#test error
+TestPred<-predict(lda_fit, testing_set)
+PredTable <- table(TestPred$class, testing_set$mpg01)
+# 1 - (total correct / total)
+TestError<-(1-(sum(diag(PredTable))/sum(PredTable)))
+TestError # 0.1016949
+
+```
+
+(e) Perform QDA on the training data in order to predict `mpg01` using the variables that seemed most associated with `mpg01` in (b). What is the test error of the model obtained?
+
+ 
+```{r}
+qda_fit <- qda(mpg01 ~ weight + acceleration, data = training_set)
+qda_fit
+
+#train error
+TrainPred<-predict(qda_fit, training_set)
+PredTable <- table(TrainPred$class, training_set$mpg01)
+# 1 - (total correct / total)
+TrainError<-(1-(sum(diag(PredTable))/sum(PredTable)))
+TrainError # 0.1277372
+
+#test error
+TestPred<-predict(qda_fit, testing_set)
+PredTable <- table(TestPred$class, testing_set$mpg01)
+# 1 - (total correct / total)
+TestError<-(1-(sum(diag(PredTable))/sum(PredTable)))
+TestError # 0.1016949
+
+```
+
+(f) Perform logistic regression on the training data in order to predict `mpg01` using the variables that seemed most associated with `mpg01` in (b). What is the test error of the model obtained?
+
+```{r}
+glm_fit <- glm(mpg01 ~ weight + acceleration, data = training_set, family=binomial)
+glm_fit
+
+#train error
+#training_set %>% add_predictions(glm_fit) %>% mutate(prob = exp(pred)/ (1 + exp(pred)))
+TrainPred <- training_set %>% 
+    add_predictions(glm_fit) %>% 
+    mutate(prob = exp(pred)/ (1 + exp(pred)), EstMpg = ifelse(prob > 0.5, 1, 0))
+PredTable<-TrainPred %>% count(mpg01, EstMpg) %>% spread(mpg01, n)
+PredTable2<-cbind(PredTable$`0`,PredTable$`1`)
+TrainError<-(1-(sum(diag(PredTable2))/sum(PredTable2)))
+TrainError # 0.07627119
+
+#test error
+TestPred <- testing_set %>% 
+    add_predictions(glm_fit) %>% 
+    mutate(prob = exp(pred)/ (1 + exp(pred)), EstMpg = ifelse(prob > 0.5, 1, 0))
+PredTable<-TestPred %>% count(mpg01, EstMpg) %>% spread(mpg01, n)
+PredTable2<-cbind(PredTable$`0`,PredTable$`1`)
+TestError<-(1-(sum(diag(PredTable2))/sum(PredTable2)))
+TestError # 0.07627119
+
+autoplot(roc_curve(TestPred, as.factor(mpg01), prob))
+roc_auc(TestPred, as.factor(mpg01), prob)
+
+```
+
+(g) Perform KNN on the training data, with several values of $K$, in order to predict `mpg01`. Use only the variables that seemed most associated with `mpg01` in (b). What test errors do you obtain? Which value of $K$ seems to perform the best on this data set?
+
+The test error was lowest at approximately k=10. The test error was highest at k = 2, but drops sharply at k=5. Beyond k=10 the test error gradually increases, but are still lower than k=2.
+
+
+```{r}
+
+ggplot(training_set) + geom_point(aes(weight, acceleration, color = mpg01))
+
+
+
+k = 7
+point = c(2000, 15)
+knn_neighor <- training_set %>%
+mutate(dist = sqrt((weight - point[1])^2 + (acceleration - point[2])^2)) %>%
+filter(row_number(dist) <= k)
+ggplot(training_set) +
+  geom_point(data = knn_neighor, aes(weight, acceleration), alpha = 0.5, size = 5) +
+  geom_segment(data = knn_neighor, aes(x = weight, y = acceleration, xend = point[1], yend = point[2], color = mpg01)) +
+  geom_point(aes(weight, acceleration, color = mpg01)) +
+  annotate("point", x = point[1], y = point[2])
+
+Ks=c(1:50)
+TestError_Ks<-data.frame()
+for (k in Ks) {
+  TestPred<-testing_set %>% mutate(EstMpg = class::knn(training_set %>% select(weight, acceleration), testing_set %>% select(weight, acceleration), training_set %>% pull(mpg01), k=k))
+  
+  TestPred$EstMpg
+  TestPred$mpg01
+  
+  PredTable<-TestPred %>% count(mpg01, EstMpg) %>% spread(mpg01, n)
+  PredTable2<-cbind(PredTable$`0`,PredTable$`1`)
+  TestError<-(1-(sum(diag(PredTable2))/sum(PredTable2)))
+  fillerDF<-data.frame(k,TestError)
+
+  TestError_Ks<-rbind(TestError_Ks,fillerDF)
+}
+
+ggplot(aes(x = k, y = TestError), data=TestError_Ks) +
+  geom_point() +
+  geom_line()
+
+  
+```

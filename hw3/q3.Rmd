@@ -1,0 +1,159 @@
+This question relates to the College data set.
+
+```{r include = FALSE}
+LibraryList<-c("tidyverse","ISLR","gam","leaps","mgcv")
+for (TheLibrary in LibraryList)
+{
+  if(TheLibrary %in% rownames(installed.packages()) == FALSE) install.packages(TheLibrary)
+}
+library(tidyverse)
+library(ISLR)
+library(gam)
+library(leaps)
+library(mgcv)
+
+head(College)
+```
+
+(a)  Split the data into a training set and a test set. Using out-of-state tuition as the response and the other variables as the predictors, perform forward stepwise selection on the training set in order to identify a satisfactory model that uses just a subset of the predictors.
+
+Based on the regsubsets plots of rss, adjr2, cp, and bic, I would select the model with 5 variables because that is the point where there are only incremental improvements in the model evaluation stats. 
+
+```{r}
+set.seed(1)
+names(College)
+rp <- modelr::resample_partition(College, c(train = 0.7, test = 0.3))
+training_set <- as_tibble(rp$train)
+testing_set <- as_tibble(rp$test)
+
+ncol(training_set)
+regfit_fwd=regsubsets(Outstate~.,data=training_set, nvmax=18, method="forward")
+regfit_summ<-summary(regfit_fwd)
+
+which.min(regfit_summ$rss)
+coef(regfit_fwd,17) # PrivateYes, Apps, Accept, Enroll, Top10perc, F.Undergrad, Room.Board, Books, Terminal, S.F.Ratio, perc.alumni, Expend, Grad.Rate 
+
+which.max(regfit_summ$adjr2)
+coef(regfit_fwd,13) # PrivateYes, Apps, Accept, Enroll, Top10perc, F.Undergrad, Room.Board, Books, Terminal, S.F.Ratio, perc.alumni, Expend, Grad.Rate 
+
+which.min(regfit_summ$cp)
+coef(regfit_fwd,12) # PrivateYes, Apps, Accept, Top10perc, F.Undergrad, Room.Board, Books, Terminal, S.F.Ratio, perc.alumni, Expend, Grad.Rate
+
+which.min(regfit_summ$bic)
+coef(regfit_fwd,10) # PrivateYes, Apps, Accept, F.Undergrad, Room.Board, Terminal, S.F.Ratio, perc.alumni, Expend, Grad.Rate 
+
+
+par(mfrow =c(2,2))
+plot(regfit_summ$rss, xlab="Number of Variables", ylab="RSS", type="l")
+points(17, regfit_summ$rss[17], col =" red",cex =2, pch =20)
+plot(regfit_summ$adjr2, xlab="Number of Variables", ylab="Adjusted RSq",type="l")
+points(13, regfit_summ$adjr2[13], col ="red", cex=2, pch =20)
+plot(regfit_summ$cp ,xlab ="Number of Variables",ylab="Cp",type="l")
+points(12, regfit_summ$cp[12], col="red",cex=2, pch =20)
+plot(regfit_summ$bic, xlab="Number of Variables", ylab="BIC", type="l")
+points(10, regfit_summ$bic[10], col =" red",cex =2, pch =20)
+
+# Based on the regsubsets plots of rss, adjr2, cp, and bic, I would select the model with 5 variables because that
+# is the point where there are only incremental improvements in the model evaluation stats. 
+
+```
+
+(b) Fit a GAM on the training data, using out-of-state tuition as the response and the features selected in the previous step as the predictors. Plot the results, and explain your findings.
+
+After using anova to evaluate models and the mgcv library to select knots and bs="cs" to use a shrinkage method on the spline, the Terminal and Expend variables were found to be significant with a spline. Private was qualitative (factor) and Room.Board and perc.alumni had significant linear responses. The residuals were normally distributed in the training set, indicating that the model does not have any obvious bias. 
+
+```{r}
+set.seed(1)
+# https://stats.stackexchange.com/questions/137109/selecting-knots-for-a-gam
+
+coef(regfit_fwd,5) # Private, Room.Board, Terminal, perc.alumni, Expend  
+fit_gam <- mgcv::gam(Outstate ~ Private+Room.Board+Terminal+perc.alumni+Expend, data = training_set)
+
+par(mfrow =c(2,3))
+mgcv::plot.gam(fit_gam, all.terms=TRUE, se=TRUE)
+
+## room.board
+fit_gam1 <- mgcv::gam(Outstate ~ Private+Terminal+perc.alumni+Expend, data = training_set)
+fit_gam <- mgcv::gam(Outstate ~ Private+Room.Board+Terminal+perc.alumni+Expend, data = training_set)
+fit_gam2 <- mgcv::gam(Outstate ~ Private+s(Room.Board,k=-1,bs="cs")+Terminal+perc.alumni+Expend, data = training_set)
+anova(fit_gam1,fit_gam,fit_gam2,test="F")
+## spline not significant with room.board, keep linear.
+
+## Terminal
+fit_gam1 <- mgcv::gam(Outstate ~ Private+Room.Board+perc.alumni+Expend, data = training_set)
+fit_gam <- mgcv::gam(Outstate ~ Private+Room.Board+Terminal+perc.alumni+Expend, data = training_set)
+fit_gam2 <- mgcv::gam(Outstate ~ Private+Room.Board+s(Terminal,k=-1,bs="cs")+perc.alumni+Expend, data = training_set)
+anova(fit_gam1,fit_gam,fit_gam2,test="F")
+## Terminal significant with spline, keep spline for terminal 
+
+## perc.alumni
+fit_gam1 <- mgcv::gam(Outstate ~ Private+Room.Board+s(Terminal,k=-1,bs="cs")+Expend, data = training_set)
+fit_gam <- mgcv::gam(Outstate ~ Private+Room.Board+s(Terminal,k=-1,bs="cs")+perc.alumni+Expend, data = training_set)
+fit_gam2 <- mgcv::gam(Outstate ~ Private+Room.Board+s(Terminal,k=-1,bs="cs")+s(perc.alumni, k=-1,bs="cs")+Expend, data = training_set)
+anova(fit_gam1,fit_gam,fit_gam2,test="F")
+# model not significant with spline on perc.alumni, so keep as linear
+
+## Expend
+fit_gam1 <- mgcv::gam(Outstate ~ Private+Room.Board+s(Terminal,k=-1,bs="cs")+perc.alumni, data = training_set)
+fit_gam <- mgcv::gam(Outstate ~ Private+Room.Board+s(Terminal,k=-1,bs="cs")+perc.alumni+Expend, data = training_set)
+fit_gam2 <- mgcv::gam(Outstate ~ Private+Room.Board+s(Terminal,k=-1,bs="cs")+perc.alumni+s(Expend, k=-1,bs="cs"), data = training_set)
+anova(fit_gam1,fit_gam,fit_gam2,test="F")
+# expend significant with spline, keep spline for expend
+
+```
+
+```{r}
+## final model
+fit_gam0 <- mgcv::gam(Outstate ~ Private+Room.Board+s(Terminal,k=-1, bs="cs")+perc.alumni+s(Expend, k=-1, bs="cs"), data = training_set)
+par(mfrow =c(2,3))
+mgcv::plot.gam(fit_gam0, all.terms=TRUE, se=TRUE)
+
+summary(fit_gam0)
+
+par(mfrow = c(2,2))
+gam.check(fit_gam0)
+```
+
+(c) Evaluate the model obtained on the test set, and explain the results obtained.
+
+Overall the model performed well with respect to both the test set. There were very few outliers in the testing set for all variables. The testing set residuals had somewhat of a right skew, indicating that when the model overpredicted values, it greatly overpredicted them. As can be seen from the histogram of test residuals, however, these overpredicted values had a low frequency relative to the overall dataset.
+
+
+```{r}
+test_sub <- testing_set %>% select(Outstate, Private, Room.Board, Terminal, perc.alumni, Expend)
+
+
+# Report the test error obtained
+# https://drsimonj.svbtle.com/visualising-residuals
+test_sub$predicted<-predict(fit_gam0, testing_set)
+test_sub$residuals<-test_sub$predicted-testing_set$Outstate
+hist(test_sub$residuals)
+
+gam_test_error<-mean((test_sub$residuals)^2)
+gam_test_error # 4198110
+
+test_sub %>% 
+  gather(key = "var", value = "value", -Outstate, -predicted, -residuals, -Private) %>%  # Get data into shape
+  ggplot(aes(x = value, y = Outstate)) +  # Note use of `x` here and next line
+  geom_segment(aes(xend = value, yend = predicted), alpha = .2) +
+  geom_point(aes(color = residuals)) +
+  scale_color_gradient2(low = "blue", mid = "white", high = "red") +
+  guides(color = FALSE) +
+  geom_point(aes(y = predicted), shape = 1) +
+  facet_grid(~ var, scales = "free") +  # Split panels here by `var`
+  theme_bw()
+
+# https://www.r-graph-gallery.com/265-grouped-boxplot-with-ggplot2/
+group_melt<-test_sub %>% 
+  gather(key = "group", value = "groupVal", -Private, -Room.Board, -Terminal, -perc.alumni, -Expend, -residuals) 
+var_melt<-group_melt %>%   
+  gather(key = "var", value = "value", -Private, -group, -groupVal, -residuals)
+ggplot(var_melt,aes(x=var, y=groupVal, fill=group)) + 
+    geom_boxplot() +
+    facet_wrap(~var, scale="free")
+```
+
+(d) For which variables, if any, is there evidence of a non-linear relationship with the response?
+
+Terminal and Expend showed evidence of a non-linear relationship with the response and were significant when compared to their linear counterparts.
+Private was also a qualitative variable (factor) variable that was not linear.

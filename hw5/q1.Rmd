@@ -1,0 +1,105 @@
+Consider a binary classification task where the features are high-dimensional. Use
+`hw5prob1\hw5prob1_train.txt` as data to train a kernel SVM, and test on `hw5prob1_test.txt` to obtain the
+prediction accuracy. In each of the text files, the last column is the response variable.
+
+```{r include = FALSE}
+#knitr::opts_chunk$set(echo=FALSE)
+
+LibraryList<-c("e1071","ROCR")
+for (TheLibrary in LibraryList)
+{
+  if(TheLibrary %in% rownames(installed.packages()) == FALSE) install.packages(TheLibrary)
+}
+
+library(e1071)
+library(ROCR)
+
+train_set<-read.csv("hw5prob1_train.txt")
+test_set<-read.csv("hw5prob1_test.txt")
+
+```
+
+(a) Fit a SVM procedure with quadratic kernel and report the test misclassification rate.
+    Use the `tune` function to pick the best value of `cost`. Try different values of
+    `gamme`, e.g. 0.1, 1, 10.
+    
+I tried using the `tune` function, but it ran for nearly 24 hours and did not complete. I tried running it with simpler values for gamma and cost on numerous occasions and it never completed within 2hrs. Instead, I used default SVM settings in order to finish the assignment. 
+
+    The test misclassification rate is 0.99 for the polynomial svm.
+
+
+```{r}
+set.seed(1)
+colnames(train_set)[ncol(train_set)]
+
+#tune_poly <- tune(svm, X.1 ~ ., data = train_set, kernel = "polynomial", degree=2, scale = FALSE,
+#                     ranges = list(gamma = c(0.1, 1, 10), cost = c(0.1, 1, 10)))
+
+svmfit_poly <- svm(X.1 ~ ., data=train_set, kernel="polynomial", degree=2, scale = FALSE)
+
+summary(svmfit_poly)
+
+plot(svmfit_poly, train_set)
+
+svmfit_poly2=svm(X.1 ~., data=test_set, kernel="polynomial", degree=2, decision.values =T, scale = FALSE)
+#fitted_poly=attributes(predict(svmfit_poly2,test_set, decision.values=TRUE))$decision.values
+#PredTable<-table(test_set$X.1, as.vector(fitted_poly))
+#TestError<-(1-(sum(diag(PredTable))/sum(PredTable)))
+#TestError # 0.9998785
+
+ypred<-predict(svmfit_poly2, test_set)
+ypred<-as.vector(ypred)
+testy<-as.vector(test_set$X.1)
+PredTable<-table(predict=ypred, truth=testy)
+TestError<-1-sum(diag(PredTable))/sum(PredTable)
+TestError # 0.9998785
+
+```
+
+(b) Fit a SVM procedure with radial kernel and report the test misclassification rate.
+    Use the `tune` function to pick the best value of `cost`. Try different values of
+    `gamme`, e.g. 0.01, 0.1, 1.
+    
+    The test misclassification rate is 0.99 for the radial svm.
+
+```{r}
+set.seed(1)
+colnames(train_set)[ncol(train_set)]
+
+#tune_radi <- tune(svm, X.1 ~ ., data = train_set, kernel = "radial", scale = FALSE,
+#                     ranges = list(gamma = c(0.1, 1, 10), cost = c(0.1, 1, 10)))
+svmfit_radi <- svm(X.1 ~ ., data =train_set, kernel="radial", scale = FALSE)
+
+summary(svmfit_radi)
+
+plot(svmfit_radi, train_set)
+
+svmfit_radi2=svm(X.1 ~., data=test_set, kernel="radial", decision.values =T, scale = FALSE)
+ypred<-predict(svmfit_radi2, test_set)
+ypred<-as.vector(ypred)
+testy<-as.vector(test_set$X.1)
+PredTable<-table(predict=ypred, truth=testy)
+TestError<-1-sum(diag(PredTable))/sum(PredTable)
+TestError # 0.9998785
+```
+
+(c) Compare the result of quadratic kernel and radial kernel by constructing ROC curves of
+    the best quadratic kernel model and the best radial basis kernel model above.
+    
+The polynomial had a slightly better ROC curve, but they were both nearly indistinguishable.
+
+```{r}
+
+svmfit_poly2=svm(X.1 ~., data=train_set, kernel="polynomial", degree=2, decision.values =T, scale = FALSE)
+fitted_poly=attributes(predict(svmfit_poly2,train_set, decision.values=TRUE))$decision.values
+pred<-prediction(as.vector(fitted_poly), train_set$X.1)
+AUCPlot_poly<-performance(pred, measure = "tpr", x.measure = "fpr")
+ROCR::plot(AUCPlot_poly, main="ROC Curve: Polynomial SVM")
+
+svmfit_radi2=svm(X.1 ~., data=train_set, kernel="radial", decision.values =T, scale = FALSE)
+fitted_radi=attributes(predict(svmfit_radi2,train_set, decision.values=TRUE))$decision.values
+pred<-prediction(as.vector(fitted_radi), train_set$X.1)
+AUCPlot_radi<-performance(pred, measure = "tpr", x.measure = "fpr")
+ROCR::plot(AUCPlot_radi, main="ROC Curve: Radial SVM")
+
+```

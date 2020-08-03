@@ -1,0 +1,99 @@
+In this problem you are going to investigate the invariance of agglomerative clustering using
+either single or complete linkage under a monotone transformation of the distances.
+The file `hw5prob3.csv` contains 40 rows of observations.
+
+```{r}
+hw5prob3<-read.csv("hw5prob3.csv")
+
+```
+
+(a) Compute the Euclidean distances between each pair of observations. (Hint, use the `dist` function)
+
+```{r}
+EucDist<-dist(hw5prob3)
+
+```
+
+(b) Run hierarchical agglomerative clustering with single linkage. Cut the tree at $K = 4$
+    clusters and plot the points with different colors (or different pch values)
+    indicating the cluster assignments. Also plot the dendogram.
+```{r}
+hc_single <- hclust(EucDist, method = "single")
+plot(hc_single, main = "Single Linkage", xlab = "", sub = "", cex = .9)
+single_cut<-cutree(hc_single , 4)
+plot(single_cut, main = "Single Linkage: Cut K = 4", xlab = "", sub = "", cex = .9, pch=single_cut, col=single_cut)
+
+```
+(c) Repeat part (b) for complete linkage.
+
+```{r}
+hc_complete <- hclust(EucDist, method = "complete")
+plot(hc_complete, main = "Complete Linkage", xlab = "", sub = "", cex = .9)
+complete_cut<-cutree(hc_complete , 4)
+plot(complete_cut, main = "Complete Linkage: Cut K = 4", xlab = "", sub = "", cex = .9, pch=complete_cut, col=complete_cut)
+
+```
+(d) Repeat parts (b) and (c), but square the distance matrix in (a). Did the clustering
+    assignments change? Did the dendograms change?
+    
+    With a squared distance matrix, the clustering assignments and dendograms did not change. The only thing that slightly changed with the
+    dendograms were the length of the nodes (which had no effect on the clusters or ordering).
+    
+```{r}
+EucDistSq<-EucDist^2
+hc_single_sq <- hclust(EucDistSq, method = "single")
+hc_complete_sq <- hclust(EucDistSq, method = "complete")
+single_cut_sq<-cutree(hc_single_sq , 4)
+complete_cut_sq<-cutree(hc_complete_sq , 4)
+
+```
+
+```{r}
+
+plot(hc_complete_sq, main = "Complete Linkage (Squared Distances)", xlab = "", sub = "", cex = .9)
+plot(hc_single_sq, main = "Single Linkage (Squared Distances)", xlab = "", sub = "", cex = .9)
+
+plot(single_cut_sq, main = "Single Linkage (Squared Distances): Cut K = 4", xlab = "", sub = "", cex = .9, pch=single_cut_sq, col=single_cut_sq)
+plot(complete_cut_sq, main = "Complete Linkage (Squared Distances): Cut K = 4", xlab = "", sub = "", cex = .9, pch=complete_cut_sq, col=complete_cut_sq)
+
+```
+(d) Explain your finding in part (e). Does it still hold for any monotonic transformation of the distances.
+    
+    Single and complete linkages look at the maximum and minimum distances between clusters, so the ratio of distances are still the same with a squared matrix. Therefore, the clusters should remain the same.
+    
+
+(e) Run agglomerative clustering with average linkage on both the original distances and the squared distances. Are the clustering assignments the same? Cut both trees at $K = 4$. Are the clustering assignments the same?
+  
+  Average linkages look at the average distances between clusters, so the dendograms were affected by squaring the distances. The clustering assignments, however, remained the same.
+  
+
+```{r}
+hc_average <- hclust(EucDist, method = "average")
+hc_average_sq <- hclust(EucDistSq, method = "average")
+avg_cut<-cutree(hc_average , 4)
+avg_cut_sq<-cutree(hc_average_sq , 4)
+
+plot(hc_average, main = "Average Linkage", xlab = "", sub = "", cex = .9)
+plot(hc_average_sq, main = "Average Linkage (Squared Distances)", xlab = "", sub = "", cex = .9)
+
+plot(avg_cut, main = "Average Linkage: Cut K = 4", xlab = "", sub = "", cex = .9, pch=avg_cut, col=avg_cut)
+plot(avg_cut_sq, main = "Average Linkage (Squared Distances): Cut K = 4", xlab = "", sub = "", cex = .9, pch=avg_cut_sq, col=avg_cut_sq)
+
+```
+(f) Run agglomerative clustering with centroid linkage on both the original distances and the squared distances. Are the clustering assignments the same? Cut both trees at $K = 4$. Are the clustering assignments the same? Also, what potential issues does centroid linkage has?
+
+Centroid linkages generates clusters based on the distances between the centroids of clusters. Squaring the distances significantly affected the clustering assignments and dendograms. Values that are near zero will become more 'similar' to one another, which would artificially create clusters that may have not been considered clusters prior to squaring the values.
+
+```{r}
+hc_cent <- hclust(EucDist, method = "centroid")
+hc_cent_sq <- hclust(EucDistSq, method = "centroid")
+cent_cut<-cutree(hc_cent , 4)
+cent_cut_sq<-cutree(hc_cent_sq , 4)
+
+plot(hc_cent, main = "Centroid Linkage", xlab = "", sub = "", cex = .9)
+plot(hc_cent_sq, main = "Centroid Linkage (Squared Distances)", xlab = "", sub = "", cex = .9)
+
+plot(cent_cut, main = "Centroid Linkage: Cut K = 4", xlab = "", sub = "", cex = .9, pch=cent_cut, col=cent_cut)
+plot(cent_cut_sq, main = "Centroid Linkage (Squared Distances): Cut K = 4", xlab = "", sub = "", cex = .9, pch=cent_cut_sq, col=cent_cut_sq)
+
+```

@@ -1,0 +1,125 @@
+It was mentioned that GAMs are generally fit using a backfitting approach. The idea behind
+backfitting is actually quite simple. We will now explore backfitting in the context of linear
+additive model. Download the \texttt{income} data from
+
+```{r}
+library(tidyverse)
+income <- read_csv("http://www-bcf.usc.edu/~gareth/ISL/Income2.csv")
+```
+
+Suppose we have the model
+$$
+    y_i=\beta_0 + f_1(x_{i1}) + f_2(x_{i2}) + \varepsilon.
+$$
+where $y_i$ is `Income`, $x_{i1}$ is `Education` and $x_{i2}=$ `Seniority`.
+
+(a) Suppose $f_1$ and $f_2$ are linear. Fit a multiple linear regression model to the data. 
+Denote the estimate of $f_1$ as $\hat f_1$. (You should center the function $\hat f_1$)
+
+```{r}
+par(mfrow =c(1,2))
+plot(income$Income~income$Education)
+plot(income$Income~income$Seniority)
+
+#Income~Education+Seniority
+# pg301
+y<-income$Income
+x1<-income$Education
+x2<-income$Seniority
+
+f1<-0.75
+f2<-0.25
+
+a<-y-f1*x1
+f2_hat<-lm(a~x2)$coef
+f2_hat
+
+a<-y-f2*x2
+f1_hat<-lm(a~x1)$coef
+f1_hat
+
+```
+
+(b) Compute the partial residual $z_{1i} = y_i -  \hat f_1(x_{1i})$ and plot $z_{1i}$ vs $x_{2i}$. Then fit a smoothing spline on the scatter plot. Denote the centered estimated smooth function as $\hat f_2$.
+
+```{r}
+
+z1<-y-f1_hat[2]*x1+f1_hat[1]
+
+prz1<-data.frame(cbind(z1,x2))
+
+ggplot(prz1,aes(z1, x2)) + 
+  geom_point() + 
+  ggtitle("Smoothing Spline of Partial Residuals") +
+  geom_smooth(method="lm", formula = y ~ splines::bs(x), se = FALSE)
+
+```
+
+(c) Compute the partial residual $z_{2i} = y_i - \hat f_2(x_{2i})$ and plot $z_{2i}$ vs $x_{1i}$. Then fit a smoothing spline on the scatter plot. Denote the centered estimated smooth function as $\hat f_1$.
+
+```{r}
+z2<-y-f2_hat[2]*x2++f2_hat[1]
+
+prz1<-data.frame(cbind(z2,x1))
+
+ggplot(prz1,aes(z2, x1)) + 
+  geom_point() + 
+  ggtitle("Smoothing Spline of Partial Residuals") +
+  geom_smooth(method="lm", formula = y ~ splines::bs(x), se = FALSE)
+
+
+```
+
+(d) Repeat (b) and (c) a number of times until convergence. (One way to declare convergence is to look at the changes of $\hat f_1(x_{1})+\hat f_2(x_2)$ in  successive iterations.)
+
+```{r}
+
+#y<-income$Income
+#x1<-income$Education
+#x2<-income$Seniority
+#f1<-1
+#f2<-1
+
+model_results <- data.frame(0.0, 0.0, 0.0)
+names(model_results) <- c('beta0', 'f1', 'f2')
+for (i in 1:25) {
+  f1 <- model_results[nrow(model_results), 2]
+  a <- income$Income - f1 * income$Education
+  f2 <- lm(a ~ income$Seniority)$coef[2]
+  a <- income$Income - f2 * income$Seniority
+  f1 <- lm(a ~ income$Education)$coef[2]
+  beta0 <- lm(a ~ income$Education)$coef[1]
+  
+  print(paste(i," - beta0=",beta0,", f1=",f1,", f2=",f2,sep=""))
+
+  model_results[nrow(model_results) + 1,] <- list(beta0, f1, f2)
+}
+
+
+```
+
+
+(e) On this data set, how many backfitting iterations were required in order to obtain a good result? Plot the function $\hat f_1(x_{1})+\hat f_2(x_2)$ over the a grid of $X_1$ and $X_2$.
+
+This dataset only required 11 backfitting iterations to obtain a good result. 
+
+```{r}
+
+#y<-income$Income
+#x1<-income$Education
+#x2<-income$Seniority
+
+lm_coef <- coef(lm(income$Income ~ income$Education + income$Seniority))
+
+par(mfrow =c(2,2))
+plot(model_results$beta0, col = 'red', type = 'l')
+abline(h = lm_coef[1], col = 'darkred', lty = 2)
+
+plot(model_results$f1, col = 'blue', type = 'l')
+abline(h = lm_coef[2], col = 'darkblue', lty = 2)
+
+plot(model_results$f2, col = 'green', type= 'l')
+abline(h = lm_coef[3], col = 'darkgreen', lty = 2)
+
+
+```

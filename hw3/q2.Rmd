@@ -1,0 +1,237 @@
+
+In this question you will fit various spline models to the fossil data (in "fossil.csv") of Chaud-huri and Marron (1999). These data consist of 106 measurements of ratios of strontium isotopes found in fossil shells and their ages.
+
+```{r include = FALSE}
+LibraryList<-c("tidyverse","tidymodels","ISLR","ggplot2","splines","gam","boot","RColorBrewer","bootstrap")
+for (TheLibrary in LibraryList)
+{
+  if(TheLibrary %in% rownames(installed.packages()) == FALSE) install.packages(TheLibrary)
+}
+library(tidyverse)
+library(tidymodels)
+library(splines)
+library(gam)
+library(ISLR)
+library(boot)
+library(RColorBrewer)
+library(bootstrap)
+
+
+fossil<-read.csv("fossil.csv")
+```
+
+(a) Fit a polynomial function, using 5 fold cross-validation for choosing the degree of the polynomial. Report the selected model.
+Polynomial of 5 is the most optimal fit with 5-fold CV.
+
+```{r}
+# https://stackoverflow.com/questions/15282580/how-to-generate-a-number-of-most-distinctive-colors-in-r
+set.seed(1)
+n <- 5
+color = grDevices::colors()[grep('gr(a|e)y', grDevices::colors(), invert = T)]
+col_vector<-sample(color,n)
+
+names(fossil)
+ggplot(fossil, aes(age,strontium.ratio)) + geom_point()
+
+```
+
+```{r}
+#http://rstudio-pubs-static.s3.amazonaws.com/14337_c17905fe46a74b21ab7ac4782f335997.html
+set.seed(1)
+cv_error_5=vector()
+for (i in 1:9) {
+  glm_fit<-glm(strontium.ratio ~ poly(age ,i),data=fossil)
+  cv_error_5[i] = boot::cv.glm(fossil, glm_fit, K=5)$delta[1]
+}
+cv_error_5
+
+TheSeq<-(1:length(cv_error_5))
+cvErrorDF<-as.data.frame(cbind(TheSeq,cv_error_5))
+# the lowest CVError is a 6 degree polynomial
+ggplot(cvErrorDF, aes(TheSeq,cv_error_5)) +
+  xlab("Degree") +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks=c(1:9)) 
+
+bestPoly_glm<-6
+
+glm_fit0<-lm(strontium.ratio ~ poly(age, bestPoly_glm),data=fossil)
+# poly 5 appears to be most optimal fit with 5fold cv
+```
+
+
+```{r}
+
+ggplot(fossil, aes(age, strontium.ratio)) + 
+  geom_point() + 
+  ggtitle(paste("Polynomial selected with 5-Fold CV:", bestPoly_glm)) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, bestPoly_glm), color = col_vector[1], se = FALSE) 
+
+
+```
+
+
+(b) Fit a natural cubic spline, using 5 fold cross-validation for choosing the degrees of freedom. Report the degrees of freedom of the chosen model.
+DF of 5 is the most optimal fit with 5-fold CV.
+
+```{r}
+#http://rstudio-pubs-static.s3.amazonaws.com/14337_c17905fe46a74b21ab7ac4782f335997.html
+set.seed(1)
+cv_error_5=vector()
+for (i in 1:10) {
+  fit_ns <- glm(strontium.ratio ~ ns(age, df=i), data = fossil)
+  cv_error_5[i] = boot::cv.glm(fossil, fit_ns, K=5)$delta[1]
+}
+cv_error_5
+
+TheSeq<-(1:length(cv_error_5))
+cvErrorDF<-as.data.frame(cbind(TheSeq,cv_error_5))
+# the lowest CVError is a 6 degree polynomial
+ggplot(cvErrorDF, aes(TheSeq,cv_error_5)) +
+  xlab("DF") +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks=c(1:9)) 
+
+bestDF_ns<-3
+
+# DF 3 appears to be most optimal fit with 5fold cv
+```
+
+```{r}
+fit_ns0 <- lm(strontium.ratio ~ ns(age, df = bestDF_ns), data = fossil)
+
+ggplot(fossil, aes(age, strontium.ratio)) + 
+    geom_point() + 
+    ggtitle(paste("Natural Cubic Spline\nDegrees of freedom selected with 5-Fold CV:", bestDF_ns)) +
+    geom_smooth(method = "lm", formula = y ~ ns(x, df = bestDF_ns), se = FALSE)
+
+```
+
+
+
+(c) Fit a smoothing spline, using 5 fold cross-validation for choosing the tuning parameter. Report the degrees of freedom of the chosen model.
+The degrees of freedom of the chosen model was 14.51338. smooth.spline uses LOOCV, however.
+
+```{r}
+#smooth.spline uses LOOCV when cv=TRUE
+#fit_smooth <- smooth.spline(fossil$age, fossil$strontium.ratio, df = 6) 
+fit_smooth <- smooth.spline(fossil$strontium.ratio~fossil$age, cv=TRUE) 
+BestDF_ss<-fit_smooth$df # 14.51338
+
+fit_smooth0 <- smooth.spline(fossil$strontium.ratio~fossil$age, df=BestDF_ss) 
+WorstDf_ss<-length(unique(fossil$age))
+fit_smooth1 <- smooth.spline(fossil$strontium.ratio~fossil$age, df=WorstDf_ss) 
+#ggplot(fossil, aes(strontium.ratio, age)) + 
+#  geom_point() + 
+#  geom_smooth(method="smooth.spline", formula = y ~ x, df=14.51338)
+
+plot(fossil$strontium.ratio~fossil$age, cex =.5, col ="darkgrey")
+title (paste("Smoothing Spline\n Degrees of freedom chosen with LOOCV:",round(BestDF_ss,2)))
+lines(fit_smooth0 ,col ="red ",lwd =2)
+lines(fit_smooth1, col ="blue",lwd =2)
+legend("bottomleft",legend=c(paste(round(BestDF_ss,2),"DF"),paste(WorstDf_ss,"DF")), col=c("red","blue"), lty=1, lwd=2, cex=.8)
+
+
+```
+
+(d) Fit a local linear regression, using 5 fold cross-validation for choosing the tuning parameter. Report the corresponding degrees of freedom of the chosen model.
+The degrees of freedom chosen by 5 fold CV was 2.
+
+
+```{r}
+
+# https://rpubs.com/mengxu/loess_cv
+#----------------------------------------------------------------------#
+# fit data points with LOESS + cross validation
+#----------------------------------------------------------------------#
+loess_wrapper <- function (x, y, SpanVals = seq(0.25, 1, by = 0.05), folds = 5){
+  # Do model selection using mean absolute error, which is more robust than squared error.
+  meanAbsError <- numeric(length(SpanVals))
+  
+  # Quantify error for each span, using CV
+  loess_fit <- function(x, y, span){
+    loess(y ~ x, span = span, control=loess.control(surface="direct"))
+  }
+  
+  loess_pred <- function(fit, newdata) {
+    predict(fit, newdata = newdata)
+  }
+
+  SpanIndex <- 0
+  for (EachSpan in SpanVals) {
+    SpanIndex <- SpanIndex + 1
+    yHat_cv <- crossval(x, y, theta.fit = loess_fit, theta.predict = loess_pred, span = EachSpan, ngroup = folds)$cv.fit
+    NonEmptyIndices <- !is.na(yHat_cv)
+    meanAbsError[SpanIndex] <- mean(abs(y[NonEmptyIndices] - yHat_cv[NonEmptyIndices]))
+  }
+  
+  # find the span which minimizes error
+  BestSpan <- SpanVals[which.min(meanAbsError)]
+  WorstSpan <- SpanVals[which.max(meanAbsError)]
+
+  
+  # fit and return the best and worst model
+  BestFit <- loess(y ~ x, span = BestSpan, control=loess.control(surface="direct"))
+  WorstFit <- loess(y ~ x, span = WorstSpan, control=loess.control(surface="direct"))
+  returnList<-list("BestFit"=BestFit,"WorstFit"=WorstFit)
+  
+  return(returnList)
+}
+loess_cv_5<-loess_wrapper(fossil$age, fossil$strontium.ratio)
+loess_cv_5_best<-loess_cv_5$BestFit
+loess_cv_5_worst<-loess_cv_5$WorstFit
+
+bestDF_llr<-loess_cv_5_best$pars$degree
+bestSpan_llr<-loess_cv_5_best$pars$span
+
+loess_cv_5_worst
+
+worstDF_llr<-loess_cv_5_worst$pars$degree
+worstSpan_llr<-loess_cv_5_worst$pars$span
+
+loess_fit0=loess(fossil$strontium.ratio~fossil$age, span=bestSpan_llr, data=fossil)
+summary(loess_fit0)
+loess_fit2=loess(fossil$strontium.ratio~fossil$age, span=worstSpan_llr, data=fossil)
+
+#plot(fossil$strontium.ratio~fossil$age, cex=0.5, col ="darkgrey")
+#title("Local Regression")
+#lines(fossil$age, predict(loess_fit0, age=fossil$age, strontium.ratio=fossil$strontium.ratio, type="response"), col ="red", lwd=2)
+#lines(fossil$age, predict(loess_fit2, age=fossil$age, strontium.ratio=fossil$strontium.ratio, type="response"), col =" blue", lwd=2)
+#legend("bottomleft", legend=c(paste("DF=",round(bestDF_llr,2),sep=""), paste("DF=",worstDF_llr,sep="")), col=c("red", "blue"), lty=1, lwd=2, cex=.8)
+fit0_lab<-paste("DF=",bestDF_llr,", Span=",bestSpan_llr,sep="")
+fit2_lab<-paste("DF=",worstDF_llr,", Span=",worstSpan_llr,sep="")
+
+ggplot(fossil, aes(age, strontium.ratio)) + 
+  geom_point() + 
+  ggtitle("Best and worst Local Linear Regression") +
+  geom_smooth(span=bestSpan_llr, se=FALSE, aes(colour=col_vector[1])) +
+  geom_smooth(span=worstSpan_llr, se=FALSE, aes(colour=col_vector[2])) +
+  scale_color_identity(name = "Model fit",
+                       breaks = c(col_vector[1],col_vector[2]),
+                       labels = c(fit0_lab, fit2_lab),
+                       guide = "legend")
+
+```
+
+
+(e) Make a scatterplot of the data, superimposed with the fitted curves by (a), (b), (c) and (d). Compare and discuss the fitted models.
+
+Smoothing Spline and the 5 degree polynomial produced nearly identical models. The smoothing spline was more fit to the data points, potentially producing a
+model with greater variance in test data.The Local Linear Regression appears to be slightly less impacted by outlier data values where age = 100, but was otherwise nearly identical to the polynomial and smothing spline models. Natural spline produced the model that had the greatest bias, but may generalize better to new data (lower variance).
+```{r}
+
+ggplot(fossil, aes(age, strontium.ratio)) + 
+  geom_point() + 
+  ggtitle("Fitted curves: GLM, Natural Splines, \nSmoothing Spline, and Local Linear Regression") +
+  geom_smooth(method="lm", formula = y ~ poly(x, bestPoly_glm), aes(colour = col_vector[1]), se = FALSE) +
+  geom_smooth(method="lm", formula = y ~ ns(x, df=bestDF_ns), aes(colour = col_vector[2]), se = FALSE) +
+  geom_smooth(method="lm", formula = y ~ splines::bs(x, df=BestDF_ss), aes(colour = col_vector[3]), se = FALSE) +
+  geom_smooth(span=bestSpan_llr, aes(colour = col_vector[4]), se=FALSE) +
+  scale_color_identity(name = "Model fit",
+                       breaks = c(col_vector[1],col_vector[2],col_vector[3],col_vector[4]),
+                       labels = c("GLM", "NS","SS","LLR"),
+                       guide = "legend")
+
+```

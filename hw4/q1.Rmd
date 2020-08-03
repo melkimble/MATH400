@@ -1,0 +1,125 @@
+
+Use the dataset `Carseats` in the package `ISLR`, we seek to predict `Sales` using regression trees and related approaches, treating the response as a quantitative variable.
+
+```{r include = FALSE}
+#knitr::opts_chunk$set(echo=FALSE)
+
+LibraryList<-c("tidyverse","ISLR","tidymodels","ggplot2","earth","tree","randomForest")
+for (TheLibrary in LibraryList)
+{
+  if(TheLibrary %in% rownames(installed.packages()) == FALSE) install.packages(TheLibrary)
+}
+
+library(tidyverse)
+library(tidymodels)
+library(ISLR)
+library(earth)
+library(ggplot2)
+library(tree)
+library(randomForest)
+head(Carseats)
+```
+
+Use the dataset Carseats in the package ISLR, we seek to predict Sales using regression trees and related approaches, treating the response as a quantitative variable.
+
+(a) Split the data set into a training set and a test set.
+```{r}
+set.seed(1)
+rs <- initial_split(Carseats, prop = 0.7)
+train_set <- as_tibble(training(rs))
+test_set <- as_tibble(testing(rs))
+
+```
+
+(b) Fit a regression tree to the training set. Plot the tree, and interpret the results. What test MSE do you obtain?
+
+A default tree fit indicates that a medium shelf location and higher price, income, CompPrice and Advertising contribute to higher sales. What I thought was not as obvious from the data, was that a 'good' shelf location did not necessarily contribute to higher sales. The test MSE obtained was 4.51. Overall, the tree produced seems more complex than necessary and arbitrarily difficult to interpret.
+
+```{r}
+tree_fit <- tree(Sales~., train_set)
+summary(tree_fit)
+
+unique(train_set$ShelveLoc)
+
+plot(tree_fit, type = "uniform")
+text(tree_fit, pretty = 1, all = TRUE, cex = 0.7)
+
+tree_pred <- predict(tree_fit, test_set, n.trees=1000)
+test_mse <- mean((test_set$Sales - tree_pred)^2) # 4.510511
+test_mse
+
+```
+
+(c) Use cross-validation in order to determine the optimal level of tree complexity. Does pruning the tree improve the test MSE?
+
+Pruning did not improve test MSE, but it did simplify the overall tree and the reduction in performance was not particularly large (~1). 
+
+```{r}
+cv_fit <- cv.tree(tree_fit,,prune.tree)
+plot(cv_fit$size, cv_fit$dev, type = "b")
+bestSize<-cv_fit$size[which.min(cv_fit$dev)]
+
+prune_fit <- prune.tree(tree_fit, best=bestSize)
+plot(prune_fit, type="uniform")
+text(prune_fit, pretty = 1, all = TRUE, cex = 0.7)
+
+tree_pred <- predict(prune_fit, test_set, n.trees=1000)
+test_prune_mse <- mean((test_set$Sales - tree_pred)^2) # 4.510511
+test_prune_mse # 5.653301
+
+```
+
+(d) Use the MARS approach in order to analyze this data. What test MSE do you obtain?
+
+The test MSE was 1.210921 with the MARS approach, a significant improvement from the tree and prune.tree.
+```{r}
+mars_fit <- earth(Sales~., train_set)
+modelr::mse(mars_fit, test_set)
+plotmo(mars_fit)
+
+```
+
+(e) Use the bagging (bootstrap) approach to analyze this data. What test MSE do you obtain? Use the
+importance() function to determine which variables are most important. You may need to use the `bootstraps` function in `tidymodels`.
+
+The test MSE obtained from a bagged tree was 2.588486; improved from a pruned tree, but not better than the MARS tree. The most important variable was Price, followed by ShelveLoc then Age.
+```{r}
+set.seed (1)
+#names(train_set)
+bag_train=sample (1:nrow(Carseats), 200)
+bag_fit=randomForest(Sales~.,data=Carseats, subset=bag_train, mtry=10, importance =TRUE)
+importance(bag_fit)
+varImpPlot(bag_fit)
+
+Carseats_test=Carseats[-bag_train ,"Sales"]
+yhat_bag = predict (bag_fit, newdata=Carseats[-bag_train,])
+plot(yhat_bag, Carseats_test)
+abline (0,1)
+bag_mse<-mean((yhat_bag-Carseats_test)^2) # 2.588486
+
+```
+
+(f) Use random forests to analyze this data. What test MSE do you obtain? Use
+the importance() function to determine which variables are most important.
+Describe the effect of m, the number of variables considered at each split, on
+the error rate obtained.
+
+The test MSE obtained from random forests was 2.669289. The most important variable was ShelveLoc, followed by Price, then CompPrice. The order of importance differed from the bagged (bootstrapped + averaged) tree; where Price was most important and Age was replaced by CompPrice. Taking the squareroot of the number of variables considered for 500 different trees increased the MSE obtained. However, it was only increased by ~0.3; not much considering the response variable, Sales.
+
+```{r}
+set.seed(1)
+rf_fit_full <- randomForest(Sales~., train_set, mtry = 10)
+rf_fit_full
+
+modelr::mse(rf_fit_full, test_set) # 2.619718
+
+rf_fit <- randomForest(Sales~., train_set, mtry = 10, importance = TRUE)
+modelr::mse(rf_fit, test_set) # 2.669289
+
+rf_fit_sqm <- randomForest(Sales~., train_set, mtry = sqrt(10), importance = TRUE)
+modelr::mse(rf_fit_sqm, test_set) # 2.931327
+
+importance(rf_fit)
+varImpPlot(rf_fit) # The most important variable was ShelveLoc, followed by Price, then CompPrice.
+
+```

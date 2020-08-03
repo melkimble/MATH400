@@ -1,0 +1,82 @@
+We will now consider the `Boston` housing data set, from the `MASS` library.
+
+```{r include = FALSE}
+#knitr::opts_chunk$set(echo=FALSE)
+library(MASS)
+library(boot)
+head(Boston)
+```
+
+(a) Based on this data set, provide an estimate for the population mean of `medv`, call it $\hat \mu$.
+```{r}
+mu<-mean(Boston$medv)
+```
+
+(b) Provide an estimate of the standard error of $\hat \mu$.
+Hint: We can compute the standard error of the sample mean by dividing the sample standard deviation by the square root of the number of observations.
+```{r}
+sigma<-sd(Boston$medv)
+se<-sigma/(sqrt(length(Boston$medv)))
+```
+
+
+(c) Now estimate the standard error of $\hat \mu$ using the bootstrap. How does this compare to your answer from (b)?
+They're almost the same value: 0.4088611 (sample se) vs 0.4011312 (bootstrap se)
+```{r}
+bootmean<-function(d,i) mean(d[i])
+
+bootSE_mu<-boot::boot(Boston$medv, bootmean, R = 500, stype="i")
+
+# SE = 0.4011312
+
+```
+
+(d) Based on your bootstrap estimate from (c), provide a 95 % confidence interval for the mean of `medv`. Compare it to the results obtained by `t.test(Boston$medv)`.
+
+Hint: You can approximate a 95 % confidence interval using the formula
+$$
+[\hat \mu - 2 SE(\hat \mu), \hat \mu + 2 SE(\hat \mu)]
+$$
+The estimated confidence interval had very similar bounds to the outputs of t.test. t.test included higher values, whereas the estimated ci from the bootstrap estimate included lower values. This may imply that the bootstrapped values were more impacted by the higher frequency of lower values in the dataset.
+
+```{r}
+se<-sd(bootSE_mu$t)
+lowci<-mu - 2*se
+highci<-mu + 2*se
+
+print(paste("95% confidence interval: [",round(lowci,2),", ",round(highci,2),"]", sep=""))
+
+t.test(Boston$medv) # 21.72953 23.33608
+
+hist(Boston$medv)
+
+```
+
+(e)
+Based on this dataset, provide an estimate, $\hat m$, for the median value of `medv` in the population.
+
+```{r}
+med<-median(Boston$medv)
+```
+
+(f) We now would like to estimate the standard error of $\hat m$. Unfortunately, there is no simple formula for computing the standard error of the median. Instead, estimate the standard error of the median using the bootstrap. Comment on your findings.
+
+The standard error and bias for a bootstrapped median is less than the estimated mean. This could be due to the median not being influenced by outliers. The majority of `medv` values are from 0 to approximately 25, therefore sample means may be biased to lower values.  
+```{r}
+bootmedian<-function(d,i) median(d[i])
+
+bootSE_med<-boot::boot(Boston$medv, bootmedian, R = 500, stype="i")
+# SE = 0.3680253
+
+```
+
+(g) Based on your bootstrap estimate from (f), provide a 95 % confidence interval for the median of `medv`.
+
+```{r}
+se<-sd(bootSE_med$t)
+
+lowci<-med - 2*se
+highci<-med + 2*se
+
+print(paste("95% confidence interval: [",round(lowci,2),", ",round(highci,2),"]", sep=""))
+```

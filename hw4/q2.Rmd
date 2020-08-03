@@ -1,0 +1,101 @@
+We now use boosting to predict `Salary` in the `Hitters` data set.
+
+```{r include = FALSE}
+#knitr::opts_chunk$set(echo=FALSE)
+
+LibraryList<-c("tidyverse","ISLR","tidymodels","ggplot2","gbm","reshape2")
+for (TheLibrary in LibraryList)
+{
+  if(TheLibrary %in% rownames(installed.packages()) == FALSE) install.packages(TheLibrary)
+}
+
+library(tidyverse)
+library(tidymodels)
+library(ISLR)
+library(gbm)
+library(reshape2)
+
+head(Hitters)
+```
+
+(a) Remove the observations for whom the salary information is unknown, and then log-transform the salaries. Create a training set consisting of the first 200 observations, and a test set consisting of the remaining observations.
+```{r}
+names(Hitters)
+
+na.omit(Hitters$Salary)
+hitters_omit<-Hitters[complete.cases(Hitters[ , "Salary"]),]
+
+hitters_omit$logSal<-log(hitters_omit$Salary)
+hitters_omit$Salary<-NULL
+
+train_set<-hitters_omit[1:200,]
+test_set<-hitters_omit[201:nrow(hitters_omit),]
+
+```
+
+(b) Perform boosting on the training set with 1,000 trees for a range of values of the shrinkage parameter. Produce a plot with different shrinkage values on the x-axis and the corresponding training set MSE on the y-axis. (c) Produce a plot with different shrinkage values on the x-axis and the corresponding test set MSE on the y-axis.
+
+
+As shrink values increase, the test MSE decreases. This is because shrink is essentially the regularization parameter that increases the complexity of the model; or rather, how closely fit the output model is to the data. Conversely, as shrink increases, test MSE becomes more varied (megaphone pattern) and increases.
+
+
+```{r}
+set.seed(1)
+#boost_train=sample (1:nrow(hitters_omit), 200)
+#boost_test=hitters_omit[-boost_train ,"logSal"]
+
+#boosting_fit=gbm(logSal~.,data=hitters_omit[boost_train,], distribution="gaussian",n.trees =1000)
+boosting_fit=gbm(logSal~.,data=train_set, distribution="gaussian",n.trees =1000)
+
+# By order of importance, CAtBat, CHits, and CWalks were the three most important variables.
+
+#boosting_fit <- gbm(logSal~., data= train_set, distribution = "gaussian", n.trees = 1000)
+summary(boosting_fit)
+
+boosting_pred <- predict(boosting_fit,newdata =test_set, n.trees=1000)
+boost_mse<-mean((boosting_pred - test_set$logSal)^2)
+boost_mse # 0.2661021
+
+# 0.001 is the default shrink val
+# ShinkVals<-seq(0.001,0.2,0.001)
+ShinkVals<-seq(0.001,1,0.001)
+TrainMSEVals<-vector()
+TestMSEVals<-vector()
+i=1
+for (Val in ShinkVals) {
+  boost_fit=gbm(logSal~.,data=train_set, distribution="gaussian",n.trees=1000, shrinkage=Val,verbose=F)
+  yhat_boost=predict(boost_fit, newdat=train_set,n.trees=1000)
+  boost_shrnk_mse<-mean((yhat_boost-train_set$logSal)^2)
+  TrainMSEVals[i]<-boost_shrnk_mse
+  
+  yhat_boost=predict(boost_fit, newdat=test_set,n.trees=1000)
+  boost_shrnk_mse<-mean((yhat_boost-test_set$logSal)^2)
+  TestMSEVals[i]<-boost_shrnk_mse
+  i=i+1
+}
+#plot(ShinkVals,MSEVals)
+ShrinkResults<-data.frame(cbind(ShinkVals,TrainMSEVals,TestMSEVals))
+
+ShrinkMelt <- melt(ShrinkResults, id="ShinkVals")
+
+ggplot(ShrinkMelt, aes(ShinkVals, value, fill=variable, colour=variable)) +
+  geom_point() +
+  ylab("MSE") +
+  xlab("Shrink Values")
+
+```
+
+
+(d) Which variables appear to be the most important predictors in the boosted model?
+
+By order of importance, CAtBat, CHits, and PutOuts were the three most important variables.
+
+```{r}
+
+summary(boosting_fit)
+
+par(mfrow = c(1, 3))
+plot(boosting_fit, i.var = "CAtBat")
+plot(boosting_fit, i.var = "CHits")
+plot(boosting_fit, i.var = "PutOuts")
+```

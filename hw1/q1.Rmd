@@ -1,0 +1,121 @@
+This question involves the use of linear regression on the `Auto` data set from the textbook library `ISLR`. You could do `?Auto` to check the description of the dataset.
+
+```{r}
+LibraryList<-c("tidyverse", "ISLR", "modelr", "ggplot2")
+for (TheLibrary in LibraryList)
+{
+  if(TheLibrary %in% rownames(installed.packages()) == FALSE) install.packages(TheLibrary)
+}
+library(tidyverse)
+library(ISLR)
+library(modelr)
+library(ggplot2)
+
+head(Auto)
+```
+
+
+(a) Use the `lm()` function to perform a linear regression with `mpg` as the response and `horsepower` as the predictor.
+
+```{r}
+
+(fit<-lm(mpg~horsepower, data=Auto))
+
+```
+
+(b) Plot the response and the predictor as well as the regression line. Any comment?
+```{r}
+ggplot(Auto, aes(x = horsepower, y = mpg)) + 
+  geom_point() +
+  geom_smooth(method = "lm", formula = y~x)
+
+```
+
+(c) What's the prediction of `mpg` if `horsepower` is 100?
+```{r}
+
+new_data <- tibble(horsepower=100)
+new_data %>% add_predictions(fit)
+
+```
+
+(d) What's the value of `R^2`? 
+```{r}
+
+summary(fit)$r.squared
+
+```
+
+(e) Try a few different transformations of the predictor. And which is the best one you could find?
+
+Fit3 is the best model among available because R^2 and AIC do not improve beyond that model, and the remaining models are too overfit to the data so they may not be generally appropriate for prediction.
+```{r}
+
+(fit2<-lm(mpg~log(horsepower), data=Auto))
+(fit3<-lm(mpg~poly(horsepower,2), data=Auto))
+(fit4<-lm(mpg~poly(horsepower,3), data=Auto))
+(fit5<-lm(mpg~poly(horsepower,4), data=Auto))
+(fit6<-lm(mpg~poly(horsepower,5), data=Auto))
+(fit7<-lm(mpg~poly(horsepower,6), data=Auto))
+(fit8<-lm(mpg~poly(horsepower,7), data=Auto))
+(fit9<-lm(mpg~poly(horsepower,8), data=Auto))
+(fit10<-lm(mpg~poly(horsepower,9), data=Auto))
+
+rsquares<-c(summary(fit)$r.squared,
+  summary(fit2)$r.squared,
+  summary(fit3)$r.squared,
+  summary(fit4)$r.squared,
+  summary(fit5)$r.squared,
+  summary(fit6)$r.squared,
+  summary(fit7)$r.squared,
+  summary(fit8)$r.squared,
+  summary(fit9)$r.squared,
+  summary(fit10)$r.squared
+)
+
+AICs<-c(AIC(fit),
+        AIC(fit2),
+        AIC(fit3),
+        AIC(fit4),
+        AIC(fit5),
+        AIC(fit6),
+        AIC(fit7),
+        AIC(fit8),
+        AIC(fit9),
+        AIC(fit10)
+)
+
+new_data<-tibble(x = 1:length(rsquares), rsq=rsquares, aic=AICs)
+
+
+ggplot(new_data, aes(x, rsq)) +
+  geom_point() +
+  stat_smooth() +
+  scale_x_continuous(breaks=c(1:10))
+
+ggplot(new_data, aes(x, aic)) +
+  geom_point() +
+  stat_smooth() +
+  scale_x_continuous(breaks=c(1:10))
+
+
+ggplot(Auto, aes(x = horsepower, y = mpg)) + 
+  geom_point() +
+  geom_smooth(method = "lm", formula = y~log(x))
+
+## seems to be best general fit for the data because the AIC and rsq do not improve beyond this model.
+ggplot(Auto, aes(x = horsepower, y = mpg)) + 
+  geom_point() +
+  geom_smooth(method = "lm", formula = y~poly(x,2))
+
+ggplot(Auto, aes(x = horsepower, y = mpg)) + 
+  geom_point() +
+  geom_smooth(method = "lm", formula = y~poly(x,3))
+
+## overfit
+ggplot(Auto, aes(x = horsepower, y = mpg)) + 
+  geom_point() +
+  geom_smooth(method = "lm", formula = y~poly(x,9))
+
+
+```

@@ -1,0 +1,283 @@
+In this exercise, we will predict the number of applications received using the other variables in the `College` data set.
+
+
+```{r include = FALSE}
+#knitr::opts_chunk$set(echo=FALSE)
+
+LibraryList<-c("tidyverse","ISLR","glmnet","ggplot2","pls","reshape2")
+for (TheLibrary in LibraryList)
+{
+  if(TheLibrary %in% rownames(installed.packages()) == FALSE) install.packages(TheLibrary)
+}
+library(tidyverse)
+library(ISLR)
+library(glmnet)
+library(ggplot2)
+library(pls)
+library(reshape2)
+
+head(College)
+```
+
+(a) Split the data set into a training set and a test set.
+```{r}
+set.seed(1)
+model_results<-data.frame()
+names(College)
+rp <- modelr::resample_partition(College, c(train = 0.7, test = 0.3))
+training_set <- as_tibble(rp$train)
+testing_set <- as_tibble(rp$test)
+
+#train x and y
+x_train <- model.matrix(Apps ~ ., training_set)
+y_train <- training_set$Apps
+# test x and y
+x_test <- model.matrix(Apps ~ ., testing_set)
+y_test <- testing_set$Apps
+
+```
+
+(b) Fit a linear model using least squares on the training set, and
+report the test error obtained.
+```{r}
+# linear regression with normal error/residuals = gaussian
+# default method for fit are literatively reweighted least squares (IWLS)
+#glm_fit <- glm(Apps ~ ., training_set, family = "gaussian")
+
+lm_fit<-lm(Apps ~ ., training_set)
+summary(lm_fit)
+
+#test error - the average error that results from using a statistical learning method to predict
+# the response on a new observation.
+# linear regression with normal error/residuals = gaussian
+lm_test_error<-modelr::mse(lm_fit, testing_set) 
+lm_test_error # 1694261
+
+lm_train_error<-modelr::mse(lm_fit, training_set) 
+lm_train_error # 952570.4
+
+TestError<-lm_test_error
+TrainError<-lm_train_error
+TheModel<-"LM"
+NewRow<-data.frame(TheModel,TestError,TrainError)
+model_results<-rbind(model_results,NewRow)
+```
+
+(c) Fit a ridge regression model on the training set, with $\lambda$ chosen
+by cross-validation. Report the test error obtained.
+
+```{r}
+# Fit a ridge regression model on the training set, with $\lambda$ chosen by cross-validation.
+bestlam <- cv.glmnet(x_train, y_train, alpha = 0, nfolds = 10)$lambda.min
+ridge_fit0 <- glmnet(x_train, y_train, alpha = 0, lambda = bestlam)
+ridge_fit0$beta %>% as.matrix() %>% as_tibble(rownames = "variable")
+
+```
+
+```{r}
+# Report the test error obtained.
+ridge_fit<-glmnet(x_train, y_train, alpha = 0)
+ridge_pred = predict(ridge_fit, s = bestlam, newx = x_test) # predict test data
+ridge_test_error<-mean((ridge_pred - y_test)^2) 
+ridge_test_error # 3139492
+
+ridge_pred = predict(ridge_fit, s = bestlam, newx = x_train) # predict train data
+ridge_train_error<-mean((ridge_pred - y_train)^2) 
+ridge_train_error # 1119240
+
+TestError<-ridge_test_error
+TrainError<-ridge_train_error
+TheModel<-"Ridge"
+NewRow<-data.frame(TheModel,TestError,TrainError)
+model_results<-rbind(model_results,NewRow)
+
+```
+
+```{r}
+# ridge regression - does better when most variables are useful. Coefficients only approach zero with lambda * penalty (coefficient^2). The minimum lambda is the 
+# model that is less biased to training data, which results in lower variance in testing data. A lambda of zero is the same as a least squares regression.
+solution <- ridge_fit$beta %>%
+    as.matrix() %>% as.data.frame() %>%
+    set_names(ridge_fit$lambda) %>%
+    rownames_to_column("variable") %>%
+    filter(variable != "(Intercept)") %>%
+    gather(-variable, key = "lambda", value = "coef", convert = TRUE)
+ggplot(solution) + geom_line(aes(x = log(lambda), y = coef, color = variable)) +
+    guides(col = guide_legend(nrow = 15))
+```
+
+
+
+(d) Fit a lasso model on the training set, with $\lambda$ chosen by cross-validation.
+Report the test error obtained, along with the number of non-zero coefficient
+estimates.
+```{r}
+# Fit a lasso model on the training set, with $\lambda$ chosen by cross-validation.
+# lasso does better when dropping variables because lasso converts variable coefficients that have the 
+# lowest amount of impact on the response to zero because it takes the coefficient absolute value*lambda. 
+# A lambda of zero is the same as a least squares regression. Increasing lambda decreases coefficients 
+# until they are zero. If a coefficient is high, i.e., steep positive slope, then a small increase in the 
+# variable leads to a greater increase in the response. Therefore, variables that already have a small 
+# impact in the response variable will reach zero coefficient faster than those that have a greater impact 
+# on the response, eliminating pointless variables.
+bestlam <- cv.glmnet(x_train, y_train, alpha = 1, nfolds = 10)$lambda.min
+lasso_fit0 <- glmnet(x_train, y_train, alpha = 1, lambda = bestlam)
+lasso_fit0$beta %>% as.matrix() %>% as_tibble(rownames = "variable")
+```
+
+```{r}
+# Report the test error obtained.
+lasso_fit<-glmnet(x_train, y_train, alpha = 1)
+lasso_pred = predict(lasso_fit, s = bestlam, newx = x_test) # predict test data
+lasso_test_error<-mean((lasso_pred - y_test)^2)
+lasso_test_error # 1768337
+
+lasso_pred = predict(lasso_fit, s = bestlam, newx = x_train) # predict test data
+lasso_train_error<-mean((lasso_pred - y_train)^2) # 957564.8
+lasso_train_error # 957564.8
+
+TestError<-lasso_test_error
+TrainError<-lasso_train_error
+TheModel<-"Lasso"
+NewRow<-data.frame(TheModel,TestError,TrainError)
+model_results<-rbind(model_results,NewRow)
+
+ncol(training_set) # 18
+# the number of non-zero coefficient estimates - in the min lasso_fit0, 16 of 17 (1 response) variables are kept as explanatory - 
+# only 1 variable is reducted to 0.
+nonZeroEst<-length(lasso_fit0$beta@x) # 16
+nonZeroEst
+```
+
+```{r}
+solution <- lasso_fit$beta %>%
+    as.matrix() %>% as.data.frame() %>%
+    set_names(lasso_fit$lambda) %>%
+    rownames_to_column("variable") %>%
+    filter(variable != "(Intercept)") %>%
+    gather(-variable, key = "lambda", value = "coef", convert = TRUE)
+ggplot(solution) + geom_line(aes(x = log(lambda), y = coef, color = variable)) +
+    guides(col = guide_legend(nrow = 15))
+```
+
+
+
+(e) Fit a PCR model on the training set, with $M$ chosen by cross-validation. Report the test error obtained, along with the value of $M$ selected by cross-validation.
+```{r}
+# Fit a PCR model on the training set, with $M$ chosen by cross-validation.
+# https://www.youtube.com/watch?v=-5nnciZ9hgc
+# principal component regression
+# solves issues about:
+# dimensionality of the dataset - the number of samples is not necessarily > the
+# number of variables
+# colinearity between the x-variables
+
+#pc <- princomp(x_train)
+#pc$scores[, 1:5]  # show first 5 scores
+
+pcr_fit <- pcr(Apps ~ ., data = training_set, scale = TRUE, validation = "CV")
+MSEP(pcr_fit, estimate = "CV")
+# https://www.vub.ac.be/fabi/multi/pcr/chaps/chap13.html
+# RMSEP is the root mean square error of prediction
+# PARSIMONY - it has been proposed to use the first local minimum or a deflection point is used instead of the global minimum (which is too complex & 
+# does not generalize well to test data). If there is only a small difference between the RMSEP of the minimum and a model with less complexity, 
+# the latter is often chosen. 
+# for this model the first local minimum/deflection point is at approximately 5 principal components
+plot(pcr_fit, "validation", estimate = "CV")
+#validationplot(pcr_fit, val.type="MSEP")
+
+# with 5 pcs, 75% of the variation is explained in the x variables and 85% of the variation is explained in Apps
+summary(pcr_fit)
+```
+
+```{r}
+# Report the test error obtained, along with the value of $M$ chosen by cross-validation.
+pcr_pred<-predict (pcr_fit, testing_set, ncomp=5)
+pcr_test_error<-mean((pcr_pred-testing_set$Apps)^2)
+pcr_test_error # 4933134
+
+pcr_pred<-predict (pcr_fit, training_set, ncomp=5)
+pcr_train_error<-mean((pcr_pred-training_set$Apps)^2) 
+pcr_train_error # 1858407
+
+TestError<-pcr_test_error
+TrainError<-pcr_train_error
+TheModel<-"PCR"
+NewRow<-data.frame(TheModel,TestError,TrainError)
+model_results<-rbind(model_results,NewRow)
+
+#pcr_fit0 <- pcr(Apps ~ ., data = training_set, scale = TRUE, ncomp = 5)
+#summary(pcr_fit0)
+
+# Report the test error obtained, along with the value of $M$ chosen by cross-validation.
+#pcr_test_error<-modelr::mse(pcr_fit0, testing_set) # 8818413
+#pcr_test_error
+
+```
+
+(f) Fit a PLS model on the training set, with $M$ chosen by cross-validation. Report the test error obtained, along with the value of $ selected by cross-validation.
+```{r}
+# Fit a PLS model on the training set, with $M$ chosen by cross-validation.
+# https://www.youtube.com/watch?v=WKEGhyFx0Dg
+# Deals with multicolinearity, allows taking into account data structure, provides visual results
+# that help the interpretation, can model several response variables at the same time
+# taking into account their structure
+
+## good for then the # of variables are high & correlated
+pls_fit <- plsr(Apps ~ ., data = training_set, scale = TRUE, validation = "CV")
+MSEP(pls_fit, estimate = "CV")
+plot(pls_fit, "validation", estimate = "CV")
+#validationplot(pls_fit, val.type=" MSEP")
+
+# 90% of the variation in Apps is explained by 3 components and 63% of the variation in X 
+summary(pls_fit)
+```
+
+```{r}
+# Report the test error obtained, along with the value of $M$ chosen by cross-validation.
+pls_pred<-predict (pls_fit, testing_set, ncomp=3)
+pls_test_error<-mean((pls_pred-testing_set$Apps)^2)
+pls_test_error # 3693110
+
+pls_pred<-predict (pls_fit, training_set, ncomp=3)
+pls_train_error<-mean((pls_pred-training_set$Apps)^2)
+pls_train_error # 1279037
+
+TestError<-pls_test_error
+TrainError<-pls_train_error
+TheModel<-"PLS"
+NewRow<-data.frame(TheModel,TestError,TrainError)
+model_results<-rbind(model_results,NewRow)
+
+# 5 components explains x amount of variation in the data, compared to x percent in PCR
+#pls_fit0 <- plsr(Apps ~ ., data = training_set, scale = TRUE, ncomp = 3)
+#summary(pls_fit0)
+#plot(pls_fit0)
+
+# Report the test error obtained, along with the value of $M$ chosen by cross-validation.
+#pls_test_error<-modelr::mse(pls_fit0, testing_set)
+#pls_test_error # 4780447
+
+#predict(pcr_fit0, testing_set, ncomp = 5) %>% as_tibble()
+```
+
+(g) Comment on the results obtained. How accurately can we predict the number of college applications received? Is there much difference among the test errors resulting from these five approaches?
+
+PCR has the greatest test error, but to achieve a closer PCR we would have to increase the number of components used in the model, increasing the variance and decreasing the bias of the model. Using LM as a baseline (since all models are essentially LM if there is no penalty or all variables are used), the lasso approach performed the best with respect to test and train error. While lasso converts variables that have an insignificant impact on the response variable to zero, there was only one variable that was dropped in the final model. The LM and lasso approaches were similar in the number of variables included in the final model. With the penalty, lasso should produce a slightly worse fit than LM, but should generalize better with the addition of new data. 
+
+```{r}
+model_results
+model_results_ord <- model_results[order(model_results$TestError),] 
+model_results_ord$ID<-seq(1:nrow(model_results_ord))
+model_results_melt <- melt(model_results_ord, id=c("TheModel","ID")) 
+
+ggplot(model_results_melt, aes(ID,value, colour=variable)) + 
+  geom_point() + 
+  geom_line() +
+  xlab("Model ID") +
+  ylab("Mean Square Error (MSE)") +
+  ggtitle("Model Train and Test Error") +
+  geom_text(aes(label=TheModel, vjust=1))
+
+```
+

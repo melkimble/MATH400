@@ -1,0 +1,45 @@
+In this problem, we are going to analysis some data (Superhero.dat) relating to children’s injuries while wearing superhero costumes. Children reporting to the emergency center at hospitals had the severity of their injury (injury) assessed (on a scale from 0, no injury, to 100, death). In addition, a note was taken of which superhero costume they were wearing (hero): Spiderman (1), Superman (2), the Hulk (3) or a Teenage Mutant Ninja Turtle (4).
+
+(a) Read the data `superhero.dat` by using `read_tsv` from `tidyverse`.
+```{r}
+LibraryList<-c("tidyverse", "modelr", "ggplot2", "dplyr")
+for (TheLibrary in LibraryList)
+{
+  if(TheLibrary %in% rownames(installed.packages()) == FALSE) install.packages(TheLibrary)
+}
+library(tidyverse)
+library(dplyr)
+library(modelr)
+library(ggplot2)
+
+superhero<-read_tsv("superhero.dat")
+head(superhero)
+
+```
+
+(b) Recode the costume labels and make the variable a "factor".
+```{r}
+# Spiderman (1), Superman (2), the Hulk (3) or a Teenage Mutant Ninja Turtle (4)
+#superhero$hero<-as.factor(superhero$hero)
+superhero<-superhero %>% mutate(hero=recode_factor(hero, '1'="Spiderman", '2'="Superman", '3'="the Hulk", '4'="Teenage Mutant Ninja Turtle"))
+superhero$hero
+
+```
+
+(c) Run a linear regression model to predict level of injury.
+```{r}
+
+(fit<-lm(injury~hero, data=superhero))
+
+
+```
+
+(d)) Draw some boxplots to show the injury severity for each superhero costumes.
+```{r}
+
+ggplot(superhero, aes(x=hero, y=injury, fill=hero)) +
+  scale_fill_brewer(palette="Dark2") + 
+  theme_minimal() +
+  geom_boxplot()
+
+```

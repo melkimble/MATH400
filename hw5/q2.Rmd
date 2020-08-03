@@ -1,0 +1,130 @@
+The file `faces.dat` is a $471 \times 361$ matrix, where each row is a grey scale image of a face.
+Load it using 
+
+```{r}
+LibraryList<-c("pixmap","ggplot2","cluster", "factoextra","reshape2")
+for (TheLibrary in LibraryList)
+{
+  if(TheLibrary %in% rownames(installed.packages()) == FALSE) install.packages(TheLibrary)
+}
+
+library(pixmap)
+library(ggplot2)
+library(cluster) 
+library(factoextra) 
+library(reshape2)
+
+faces <- matrix(scan("faces.dat"), nrow = 471, ncol = 361)
+```
+
+You can use the `plot.face`
+```{r}
+
+plot_face <- function(pic,TheTitle) {
+    plot(pixmapGrey(matrix(pic, nrow = 19), cellres = 1), main=TheTitle)
+}
+plot_face(faces[1,], "Face1")
+
+```
+below to plot one of the rows of the matrix.
+
+
+(a) Cluster the faces by running k-means for $K$ = 1, 2, 4, 8, 16, 32, 64, 128, 256, each
+    time choosing the clustering that gives the best objective of 10 random restarts. Note that this is not vector quantization. You are clustering a collection of
+    images, rather than the pixels of a single image.
+    
+```{r}
+set.seed(1)
+Ks <- c(1, 2, 4, 8, 16, 32, 64, 128, 256)
+par(mfrow=c(3,3))
+for (K in Ks)
+{
+  km_out <- kmeans(faces, K, nstart = 10)
+  km_out
+  plot(faces, col = (km_out$cluster + 1), main = paste("K-Means Clustering Results (K=",K,")",sep=""), xlab = "", ylab = "", pch = 20, cex = 2)
+}
+
+```
+
+(b) Plot the within cluster variations, between cluster variations as a function of $K$.
+    Plot also CH index as a function of $K$ for $K \ge 2$. What is the choice of $K$ suggested by CH
+    index?
+    
+    The choice of K suggested by the CH index is 1~2 (the highest value).
+    
+```{r}
+set.seed(1)
+Ks <- c(1, 2, 4, 8, 16, 32, 64, 128, 256)
+#K <- 4
+n <- nrow(faces)
+i=1
+CHIndex=vector()
+
+par(mfrow=c(3,3))
+for (K in Ks)
+{
+  km_out <- kmeans(faces, K, nstart = 10)
+  plot(km_out$withinss)
+  #plot(km_out$withinss / km_out$tot.withinss)
+  plot(km_out$betweenss)
+  #print(km_out$betweenss / km_out$totss)
+
+  #CH index
+  #CHIndex[i]<-(km_out$betweenss / (K - 1)) / (km_out$tot.withinss / (n - K))
+  CHIndex[i]<-((km_out$betweenss/km_out$tot.withinss) * (n - K)/(K - 1))
+
+  i=i+1
+}
+
+#plot(Ks,CHIndex, labels=Ks)
+KsDF<-data.frame(cbind(Ks,CHIndex))
+ggplot(KsDF, aes(Ks,CHIndex)) + 
+  geom_point() + 
+  geom_text(aes(label=Ks), position = position_nudge(x = 7))
+
+
+```
+    
+
+(c) Plot the $K$ mean images for $K = 4$. Compare the different clusters. What has
+    been captured in each?
+    
+Each cluster focuses on a different greyscale. K=2 is the most distinct because it covers the lightest values. In the clusterplot, there is also not much overlap between clusters, except for a slight overlap between cluster 1 and 2.
+
+```{r}
+set.seed(1)
+K<-4
+km_out <- kmeans(faces, K, nstart = 10)
+#plot(faces, col = (km_out$cluster + 1), main = paste("K-Means Clustering Results (K=",K,")",sep=""), xlab = "", ylab = "", pch = 20, cex = 2)
+
+#clusplot(faces, km_out$cluster, color=TRUE, shade=TRUE, labels=2, lines=0)
+
+fviz_cluster(km_out, geom = "point", data = faces) + ggtitle("k = 4")
+
+Ks <- c(1, 2, 3, 4)
+par(mfrow=c(2,2))
+for (K in Ks) {
+  plot_face(km_out$centers[km_out$cluster,][K,], paste("K=",K,sep=""))
+}
+
+```
+
+(d) Run a $K$ medoids algorithm and plot the $K$ medoid images for $K = 4$.  Is there
+    a difference in this case?
+    
+    Mediods did not appear to have improved clustering, as each cluster was not visually distinct in the output image. This makes sense, because with the cluster plot, there is a large amount of overlap between classes. Faces were easier to visibly discern with kmeans clusters.
+    
+```{r}
+#K-Medoids
+pam_fit <- pam(faces, 4)
+clusplot(pam_fit)
+
+#plot_face(pam_fit$medoids[1,], paste("K-Mediods=",4,sep=""))
+
+Ks <- c(1, 2, 3, 4)
+par(mfrow=c(2,2))
+for (K in Ks) {
+  plot_face(pam_fit$medoids[1,], paste("K-Mediods=",K,sep=""))
+}
+
+```

@@ -1,0 +1,148 @@
+In this exercise, we will predict the number of applications received using the other
+variables in the \texttt{College} dataset.
+
+```{r include = FALSE}
+#knitr::opts_chunk$set(echo=FALSE)
+LibraryList<-c("corrplot","RColorBrewer","tibble","ggplot2","plyr", "tidyverse","ISLR","gridExtra","broom","modelr","tidymodels","MASS","dplyr","purrr","stringi","class")
+for (TheLibrary in LibraryList)
+{
+  if(TheLibrary %in% rownames(installed.packages()) == FALSE) install.packages(TheLibrary)
+}
+#update.packages(ask = FALSE)
+library(corrplot)
+library(RColorBrewer)
+library(stringi)
+library(purrr)
+library(tibble)
+library(MASS)
+library(ggplot2)
+library(gridExtra)
+library(dplyr)
+library(plyr)
+library(tidyverse)
+library(broom)
+library(modelr)
+library(tidymodels)
+library(ISLR)
+library(class)
+
+head(College)
+```
+
+
+(a) Split the dataset into a training set and a test test (of roughly equal size). Fit a linear model
+    using least squares on the training set, and report the prediction error on the test set.
+```{r}
+# Combining correlogram with the significance test
+# http://www.sthda.com/english/wiki/visualize-correlation-matrix-using-correlogram
+cor_mtest <- function(mat, ...) {
+    mat <- as.matrix(mat)
+    n <- ncol(mat)
+    pval<- matrix(NA, n, n)
+    diag(pval) <- 0
+    for (i in 1:(n - 1)) {
+        for (j in (i + 1):n) {
+            tmp <- cor.test(mat[, i], mat[, j], ...)
+            pval[i, j] <- pval[j, i] <- tmp$p.value
+        }
+    }
+  colnames(pval) <- rownames(pval) <- colnames(mat)
+  pval
+}
+
+College2 <- College %>% mutate(Private = revalue(factor(College$Private), c("Yes" = "1", "No" = "0")))
+College2$Private <- as.integer(as.character(College2$Private))
+
+#names(College2)
+# linear regression with normal error/residuals = gaussian
+fit <- glm(Apps ~ ., College2, family = "gaussian")
+summary(fit)
+
+# keep "PrivateYes", "Accept", "Enroll", "Top10perc", "Top25perc", "F.Undergrad", "Outstate", "Room.Board", "PhD", "Expend", "Grad.Rate"
+ColKeep <- names(College2) %in% c("Apps","Private", "Accept", "Enroll", "Top10perc", "Top25perc", "F.Undergrad", "Outstate", "Room.Board", "PhD", "Expend", "Grad.Rate") 
+College_sub <- College2[ColKeep]
+
+
+# matrix of the p-value of the correlation
+pval <- cor_mtest(College_sub)
+head(pval[, 1:5])
+
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+CollegeCorr<-cor(College_sub)
+
+corrplot::corrplot(CollegeCorr, method="color", col=col(200),  
+         type="upper", order="hclust", 
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.col="black", tl.srt=45, #Text label color and rotation
+         # Combine with significance
+         # Add significance level to the correlogram
+         # Correlations with p-value > 0.01 (sig.level) are considered insignificant (insig) and left "blank"; otherwise
+         # the color is associated with the neg or pos correlation of two variables
+         p.mat = pval, sig.level = 0.01, insig = "blank", 
+         # hide correlation coefficient on the principal diagonal
+         diag=FALSE, number.cex=0.75
+         )
+
+# keep "PrivateYes", "Accept", "Enroll", "Top10perc", "Top25perc", "F.Undergrad", "Outstate", "Room.Board", "PhD", "Expend", "Grad.Rate"
+# dropped "Room.Board" - insignificant in the model
+ColKeep <- names(College) %in% c("Apps","Private", "Accept", "Top25perc", "PhD", "Expend", "Grad.Rate") 
+College_sub <- College[ColKeep]
+names(College_sub)
+
+College_split <- initial_split(College_sub, prop = 0.50)
+train_data <- training(College_split)
+test_data <- testing(College_split)
+
+# linear regression with normal error/residuals = gaussian
+# default method for fit are literatively reweighted least squares (IWLS)
+glm_fit <- glm(Apps ~ ., train_data, family = "gaussian")
+
+#test error
+# linear regression with normal error/residuals = gaussian
+glm_fit_mse<-modelr::mse(glm_fit, test_data) # 1197883
+glm_fit_mse #subset dataset
+
+## all variables
+College_split <- initial_split(College, prop = 0.50)
+train_data <- training(College_split)
+test_data <- testing(College_split)
+# linear regression with normal error/residuals = gaussian
+# default method for fit are literatively reweighted least squares (IWLS)
+glm_fit2 <- glm(Apps ~ ., train_data, family = "gaussian")
+
+#test error
+# linear regression with normal error/residuals = gaussian
+glm_fit2_mse<-modelr::mse(glm_fit2, test_data) # 1315459
+glm_fit2_mse # full datast
+```
+
+(b) Use 10-fold cross-validation to estimate the prediction error (on the whole dataset).
+    Compare to that of part (a). 
+```{r}
+
+# linear regression with normal error/residuals = gaussian
+glm_fit3 <- glm(Apps ~ ., College, family = "gaussian")
+glm_fit3_cv<-boot::cv.glm(College, glm_fit3, K = 10)$delta[1] # 1256449
+glm_fit3_cv
+
+summary(glm_fit)
+glm_fit_mse # 1153855; smallest error ; subset dataset
+summary(glm_fit3)
+glm_fit3_cv # 1295087; middle ; full dataset with 10-fold cv
+summary(glm_fit2)
+glm_fit2_mse # 1315459; largest error ; full dataset
+```
+    
+(c) Comment on the bias and variance of the prediction errors of (a) and (b).
+
+The prediction error on the full dataset (without 10-fold cross-validation) had the worst prediciton error, followed by the 10-fold cross-validation estimate and the subset dataset. The subset dataset had the lowest prediction error, overall. The model with 10-fold cross-validation had the highest AIC value, implies that this model has the worst balance between bias and variance. The model with the full dataset has the lowest AIC (6441), but its difference was almost negligible compared to the model with the subset dataset (6630.7).
+
+
+glm_fit2 (full dataset)
+AIC: 6441
+
+glm_fit3 (10-fold)
+AIC: 13022
+
+glm_fit (subset)
+AIC: 6630.7

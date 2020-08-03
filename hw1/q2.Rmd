@@ -1,0 +1,77 @@
+This question continues the use of the `Auto` data set.
+
+```{r}
+LibraryList<-c("tidyverse", "ISLR", "modelr", "ggplot2", "broom")
+for (TheLibrary in LibraryList)
+{
+  if(TheLibrary %in% rownames(installed.packages()) == FALSE) install.packages(TheLibrary)
+}
+library(tidyverse)
+library(ISLR)
+library(modelr)
+library(ggplot2)
+library(broom)
+
+head(Auto)
+```
+
+(a) Use the `lm()` function to perform a multiple linear regression with `mpg` as the response and all other variables except `name` as the predictors.
+
+```{r}
+#names(Auto)
+(fit<-lm(mpg~. -name, data=Auto))
+
+```
+
+(b) Not all the variables would be useful to predict `mpg`. A way to test the significance of a variable is to consider a model without that variable. By comparing the MSEs of the original model and the reduced model, we will be able to tell which variables are more important. (You could compute the MSEs based on the whole dataset or based on a training set)
+```{r}
+(fit2<-lm(mpg~cylinders+displacement+horsepower+weight+acceleration+year, data=Auto))
+(fit3<-lm(mpg~cylinders+displacement+horsepower+weight+acceleration+origin, data=Auto))
+(fit4<-lm(mpg~cylinders+displacement+horsepower+weight+year+origin, data=Auto))
+(fit5<-lm(mpg~cylinders+displacement+horsepower+acceleration+year+origin, data=Auto))
+(fit6<-lm(mpg~cylinders+displacement+weight+acceleration+year+origin, data=Auto))
+(fit7<-lm(mpg~cylinders+horsepower+weight+acceleration+year+origin, data=Auto))
+(fit8<-lm(mpg~displacement+horsepower+weight+acceleration+year+origin, data=Auto))
+
+
+c(
+mse(fit, Auto), 
+mse(fit2, Auto), 
+mse(fit3, Auto),
+mse(fit4, Auto),
+mse(fit5, Auto),
+mse(fit6, Auto),
+mse(fit7, Auto),
+mse(fit8, Auto)
+)
+
+c(
+(mse(fit2, Auto) - mse(fit, Auto)), #origin, 0.74269004
+(mse(fit3, Auto) - mse(fit, Auto)), #year, 6.12818853
+(mse(fit4, Auto) - mse(fit, Auto)), #acceleration, 0.01877147 - least sig
+(mse(fit5, Auto) - mse(fit, Auto)), #weight, 2.78477473
+(mse(fit6, Auto) - mse(fit, Auto)), #horsepower, 0.04270345
+(mse(fit7, Auto) - mse(fit, Auto)), #displacement, 0.19799150
+(mse(fit8, Auto) - mse(fit, Auto))  #cylinders, 0.06579462
+)
+
+```
+
+(c) You discovered the variable which is least significant in part (b). Now split the dataset into a train and test sets and verify that the model without the least significant variable indeed is better than the original model.
+
+```{r}
+Auto_sub<-Auto[ , -which(names(Auto)=="name")]
+names(Auto_sub)
+
+rp <- modelr::resample_partition(Auto_sub, c(train = 0.7, test = 0.3))
+training_set <- as.tibble(rp$train)
+testing_set <- as.tibble(rp$test)
+
+(fit0<-lm(mpg~., data=training_set))
+(fit1<-lm(mpg~cylinders+displacement+horsepower+weight+year+origin, data=training_set))
+
+c(mse(fit0, testing_set), ## 15.35841
+mse(fit1, testing_set)) ## 14.88107 - better model
+
+
+```

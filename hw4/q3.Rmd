@@ -1,0 +1,174 @@
+Consider the following dataset
+
+```{r}
+LibraryList<-c("tidyverse", "tidymodels", "ggplot2", "tree","randomForest","gbm","modelr")
+for (TheLibrary in LibraryList)
+{
+  if(TheLibrary %in% rownames(installed.packages()) == FALSE) install.packages(TheLibrary)
+}
+
+library(tidyverse)
+library(tidymodels)
+library(ggplot2)
+library(tree)
+library(randomForest)
+library(gbm)
+library(modelr)
+
+
+set.seed(1234)
+somedata <- tibble(
+    x1 = rnorm(100),
+    x2 = rnorm(100)
+) %>% mutate(y = as_factor(ifelse(x1^2 + x2^2 > 1.39, "A", "B")))
+circlepts <- tibble(theta = seq(0, 2*pi, length = 100)) %>%
+    mutate(x = sqrt(1.39) * sin(theta), y = sqrt(1.39) * cos(theta))
+
+somedata<-data.frame(somedata)
+
+p <- ggplot(somedata) + geom_point(aes(x1, x2, color = y)) + coord_fixed() +
+    geom_polygon(data = circlepts, aes(x, y), color = "blue", fill = NA)
+p
+```
+
+
+(a) Fit a classification tree model to the observations. And overlay the decision boundaries
+of the predictions on top of the plot above.
+
+You could use predict() function over a dense grid and then use `p + geom_contour(....)`.
+```{r}
+
+# https://michael.hahsler.net/SMU/EMIS7332/R/viz_classifier.html
+# R Code for Comparing Decision Boundaries of Different Classifiers
+# Really good function for plotting decision boundaries. Works for:
+# kNN, naiveBayes, LDA, logistic regression, trees, RFs, SVMs, NNs
+
+##  HOWEVER -- the example uses the rpart package rather than the tree package,
+## which can produce different results -- forunately it should not be an
+## issue since this function is generally applicable
+## 04-27-2019
+## I altered the function a little to check if the response is a factor variable
+## and converted it to numeric - doesn't work otherwise.
+## however, these plots will only work with 2 predictors. The response
+## can have multiple categories.
+## added check for 'package' - different packages need additional args to predict values
+decisionplot <- function(model, data, class = NULL, predict_type = "class",
+  resolution = 100, showgrid = TRUE, package = NULL, numTrees = NULL, ...) {
+
+  # 
+  # if(!is.null(class)) {
+  #     if (is.factor(data[,class])) cl<-as.numeric(levels(data[,class]))[data[,class]] else cl <- data[,class] 
+  #   }else {
+  #     cl <- 1
+  #   }
+  #data<-data[, -which(names(data) == responseVar)]
+  if(!is.null(class)) cl <- data[,class] else cl <- 1
+
+  data <- data[,1:2]
+  k <- length(unique(cl))
+
+
+  # plot(data, col = as.integer(cl)+1L, pch = as.integer(cl)+1L, ...)
+  plot(data, col = as.integer(cl), pch = as.integer(cl), ...)
+
+  # make grid
+  r <- sapply(data, range, na.rm = TRUE)
+  xs <- seq(r[1,1], r[2,1], length.out = resolution)
+  ys <- seq(r[1,2], r[2,2], length.out = resolution)
+  g <- cbind(rep(xs, each=resolution), rep(ys, time = resolution))
+  colnames(g) <- colnames(r)
+  g <- as.data.frame(g)
+
+  ### guess how to get class labels from predict
+  ### (unfortunately not very consistent between models)
+
+  if(!is.null(package)){
+    if (package == "gbm") p <- predict(model, newdata=g, n.trees=numTrees) 
+    } else {
+      p <- predict(model, g, type = predict_type)
+    }
+
+  if(is.list(p)) p <- p$class
+  p <- as.factor(p)
+
+  if(showgrid) points(g, col = as.integer(p)+1L, pch = ".")
+
+  z <- matrix(as.integer(p), nrow = resolution, byrow = TRUE)
+  contour(xs, ys, z, add = TRUE, drawlabels = FALSE,
+    lwd = 2, levels = (1:(k-1))+.5)
+
+  invisible(z)
+}
+tree_fit <- tree(y ~ ., somedata)
+#tree_pred <- predict(tree_fit, somedata, n.trees=1000)
+#predict()
+#p + geom_contour()
+
+decisionplot(tree_fit, somedata, class="y", main = "Tree")
+
+```
+
+
+(b) Repeat it with random forest.
+```{r}
+rf_fit <- randomForest(y~., somedata, mtry = 2, importance = TRUE)
+decisionplot(rf_fit, somedata, class="y", main = "Random Forests")
+
+```
+
+
+(c) Repeat again using boosting.
+```{r}
+
+#levels(somedata$y)[levels(somedata$y)=="A"]<-0
+#levels(somedata$y)[levels(somedata$y)=="B"]<-1
+
+## Function altered and added to work with gbm - will incorporate it to previous function later.
+boostDecisionPlot<-function(model,data, class=NULL,numTrees, resolution=100,showgrid=TRUE,...) {
+  
+  if(!is.null(class)) cl <- data[,class] else cl <- 1
+    
+  CNames<-unique(data[,class])
+  data <- data[,1:2]
+  
+  plot(data, col = as.integer(cl), pch = as.integer(cl), ...)
+
+      
+  k <- length(unique(cl))
+  # make grid
+  r <- sapply(data, range, na.rm = TRUE)
+  xs <- seq(r[1,1], r[2,1], length.out = resolution)
+  ys <- seq(r[1,2], r[2,2], length.out = resolution)
+  g <- cbind(rep(xs, each=resolution), rep(ys, time = resolution))
+  colnames(g) <- colnames(r)
+  g <- as.data.frame(g)
+  pred <- predict.gbm(model, newdata=g,type="response", n.trees=numTrees) 
+  pred<-data.frame(pred)
+  colnames(pred)<-CNames
+  
+  p <- as.factor(colnames(pred)[1:2][apply(pred[, 1:2], 1, which.max)])
+  
+  if(showgrid) points(g, col = as.integer(p)+1L, pch = ".")
+
+  z <- matrix(as.integer(p), nrow = resolution, byrow = TRUE)
+  contour(xs, ys, z, add = TRUE, drawlabels = FALSE,
+    lwd = 2, levels = (1:(k-1))+.5)
+
+  invisible(z)
+  # return(g)
+}
+
+boosting_fit=gbm(y ~.,data=somedata, distribution="multinomial", n.trees=1000)
+boostDecisionPlot(model=boosting_fit, data=somedata,class="y",numTrees=1000, main="Generalized Boosted Regression")
+
+```
+
+
+(d) Comment on the shapes of the decision boundaries.
+
+For all models except boosted I chose default settings. The GBM package automatically selects a bernoulli distribution when one is not specified. 
+Since the data are fitting a response to a categorical variable, I selected a multinomial distribution to better represent the data. Otherwise,
+Boosted seemed to be the most overfit, with some inaccurate predictions for high x1 values and x2 values of 0. The classic tree fit was the most
+general and rectangular in shape and random forests were inbetween but closer in resemblance to the tree. Random forests seems to have fewer classification errors 
+than the classic tree because it is more closely fit to the input data. Based on the output, I would assume random forests would potentially perform
+the best overall with new data and boosted to perform the worst. 
